@@ -11,4 +11,7 @@ public class Utils {
     //Todo: Deberíamos crear variables que definan los tamaños de nuestro mundo
     public static final float WORLD_HEIGTH = 8f;
     public static final float WORLD_WIDTH = 4.8f;
+
+    //Todo: Identificadores de assets
+    public static final String ATLAS_MAP = "FBAtlas";
 }

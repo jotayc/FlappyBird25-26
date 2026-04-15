@@ -1,0 +1,69 @@
+
+FBAtlas.png
+size: 556, 1021
+format: RGBA8888
+filter: Nearest, Nearest
+repeat: none
+bird1
+  rotate: false
+  xy: 254, 27
+  size: 34, 24
+  orig: 34, 24
+  offset: 0, 0
+  index: -1
+bird2
+  rotate: false
+  xy: 484, 351
+  size: 34, 24
+  orig: 34, 24
+  offset: 0, 0
+  index: -1
+bird3
+  rotate: false
+  xy: 484, 325
+  size: 34, 24
+  orig: 34, 24
+  offset: 0, 0
+  index: -1
+flappy_background
+  rotate: false
+  xy: 2, 219
+  size: 480, 800
+  orig: 480, 800
+  offset: 0, 0
+  index: -1
+flappy_gameOver
+  rotate: false
+  xy: 254, 53
+  size: 300, 76
+  orig: 300, 76
+  offset: 0, 0
+  index: -1
+flappy_getReady
+  rotate: false
+  xy: 254, 131
+  size: 300, 86
+  orig: 300, 86
+  offset: 0, 0
+  index: -1
+flappy_tap
+  rotate: false
+  xy: 2, 2
+  size: 250, 215
+  orig: 250, 215
+  offset: 0, 0
+  index: -1
+pipeDown
+  rotate: false
+  xy: 484, 699
+  size: 52, 320
+  orig: 52, 320
+  offset: 0, 0
+  index: -1
+pipeUp
+  rotate: false
+  xy: 484, 377
+  size: 51, 320
+  orig: 51, 320
+  offset: 0, 0
+  index: -1
