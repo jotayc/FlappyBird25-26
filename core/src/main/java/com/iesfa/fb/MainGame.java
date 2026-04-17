@@ -21,10 +21,13 @@ public class MainGame extends Game {
     // Crear instancia de la pantalla de GameOver
     public GameOverScreen gameOverScreen;
 
+    public AssetMan assetManager;
     @Override
     public void create() {
 
+        this.assetManager = new AssetMan();
         this.gameScreen = new GameScreen(this);
+
 
         //Scene2d nos ayuda a manejar las diferentes instancias de las diferentes pantallas que
         //compondrá nuestro juego.

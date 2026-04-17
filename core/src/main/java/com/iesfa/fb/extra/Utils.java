@@ -14,4 +14,5 @@ public class Utils {
 
     //Todo: Identificadores de assets
     public static final String ATLAS_MAP = "FBAtlas";
+    public static final String BACKGROUND_IMAGE = "flappy_background";
 }
