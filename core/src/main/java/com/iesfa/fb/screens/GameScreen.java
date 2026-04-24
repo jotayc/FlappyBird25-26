@@ -4,7 +4,7 @@ import static com.iesfa.fb.extra.Utils.WORLD_HEIGTH;
 import static com.iesfa.fb.extra.Utils.WORLD_WIDTH;
 
 import com.badlogic.gdx.graphics.g2d.Animation;
-import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -40,7 +40,7 @@ public class GameScreen extends BaseScreen {
     }
 
     public void addBird(){
-        Animation<TextureAtlas.AtlasRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
+        Animation<AtlasRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
         this.bird = new Bird(birdSprite, new Vector2(1.35f ,4.75f ));
         this.stage.addActor(this.bird);
     }

@@ -7,6 +7,7 @@ import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas.*;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 
 public class AssetMan {
@@ -25,11 +26,11 @@ public class AssetMan {
         textureAtlas = assetManager.get(ATLAS_MAP);
     }
 
-    public TextureAtlas.AtlasRegion getBackground(){
+    public AtlasRegion getBackground(){
         return this.textureAtlas.findRegion(BACKGROUND_IMAGE);
     }
 
-    public Animation<TextureAtlas.AtlasRegion> getBirdAnimation(){
+    public Animation<AtlasRegion> getBirdAnimation(){
         return new Animation<>(0.33f,
             textureAtlas.findRegion("bird1"),
             textureAtlas.findRegion("bird2"),
