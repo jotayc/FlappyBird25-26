@@ -1,5 +1,7 @@
 package com.iesfa.fb.screens;
 
+import static com.iesfa.fb.extra.Utils.USER_FLOOR;
+import static com.iesfa.fb.extra.Utils.USER_ROOF;
 import static com.iesfa.fb.extra.Utils.WORLD_HEIGTH;
 import static com.iesfa.fb.extra.Utils.WORLD_WIDTH;
 
@@ -7,8 +9,13 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
+import com.badlogic.gdx.physics.box2d.EdgeShape;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
@@ -47,15 +54,41 @@ public class GameScreen extends BaseScreen {
 
     }
 
-
-    //Todo alumno: Crear un método que añada el 'cuerpo' y la 'forma' del suelo
-
-
     @Override
     public void show() {
         addBackground();
+        addRoof();
+        addFloor();
         addBird();
         addPipes();
+    }
+
+
+    //Todo alumno: Crear un método que añada el techo con la clase EdgeShape
+    public void addRoof(){
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        Body body = world.createBody(bodyDef);
+        body.setUserData(USER_ROOF);
+
+        EdgeShape edge = new EdgeShape();
+        edge.set(0,WORLD_HEIGTH,WORLD_WIDTH,WORLD_HEIGTH);
+        body.createFixture(edge, 1);
+        edge.dispose();
+    }
+
+    //Todo alumno: Crear un método que añada el 'cuerpo' y la 'forma' del suelo
+    private void addFloor() {
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.position.set(WORLD_WIDTH / 2f, 0.6f);
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        Body body = world.createBody(bodyDef);
+        body.setUserData(USER_FLOOR);
+
+        PolygonShape edge = new PolygonShape();
+        edge.setAsBox(2.3f, 0.5f);
+        body.createFixture(edge, 3);
+        edge.dispose();
     }
 
     public void addBird(){
@@ -71,9 +104,12 @@ public class GameScreen extends BaseScreen {
     public void addPipes(){
         //Cargamos la textura de la tubería inferior
         TextureRegion pipeDownTexture = mainGame.assetManager.getPipeBottom();
+        //Todo 7 Creamos la textura, la pasamos al constructor
+        TextureRegion pipeTopTexture = mainGame.assetManager.getPipeTop();
 
-        // Todo 12. Creamos una instancia de Pipes
-        this.pipes = new Pipes(this.world, pipeDownTexture,new Vector2(3.75f,2f));
+        //Todo alumno: Posicion aleatoria de las tuberías
+        float posRandomY = MathUtils.random(0f,2f);
+        this.pipes = new Pipes(this.world, pipeDownTexture,pipeTopTexture,new Vector2(3.75f,2f));
 
         // Todo-> y se lo pasamos al escenario
         this.stage.addActor(this.pipes);

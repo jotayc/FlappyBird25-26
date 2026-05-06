@@ -24,5 +24,8 @@ public class Utils {
     public static final String USER_BIRD = "bird";
 
     public static final String USER_FLOOR = "floor";
-    public static final String USER_PIPE_DOWN= "pipeDown";
+    public static final String USER_PIPE_BOTTOM = "pipeDown";
+    public static final String USER_PIPE_TOP= "pipeTop";
+    public static final String USER_COUNTER= "counter";
+    public static final String USER_ROOF = "roof";
 }

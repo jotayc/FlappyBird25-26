@@ -17,12 +17,10 @@ import com.iesfa.fb.extra.Utils;
 
 public class Bird extends Actor {
 
-    //Todo 1. Creamos diferentes estados del juego y la velocidad de impulso que se le dará al pj
     private static final int STATE_NORMAL = 0;
     private static final int STATE_DEAD = 1;
     private static final float JUMP_SPEED = 5f;
 
-    //Todo 2.Controlamos el estado con un atributo
     private int state;
 
     private Animation<AtlasRegion> birdAnimation;
@@ -61,6 +59,8 @@ public class Bird extends Actor {
 
         //createBody de mundo
         this.body = this.world.createBody(bodyDef);
+        //setUserData  --> Utils -> identificadores de cuerpos
+        this.body.setUserData(Utils.USER_BIRD);
     }
 
 
@@ -72,8 +72,6 @@ public class Bird extends Actor {
 
         //createFixture
         this.fixture = this.body.createFixture(circle,8);
-        //setUserData  --> Utils -> identificadores de cuerpos
-        this.fixture.setUserData(Utils.USER_BIRD);
         //dispose
         circle.dispose();
     }
@@ -82,9 +80,7 @@ public class Bird extends Actor {
 
     @Override
     public void act(float delta) {
-        //Todo 3. Controlamos el toque de la pantalla
         boolean jump = Gdx.input.justTouched();
-        //Todo 4. Si el estado es normal, se le da un impulso
         if(jump && this.state == STATE_NORMAL){
             this.body.setLinearVelocity(0, JUMP_SPEED);
         }

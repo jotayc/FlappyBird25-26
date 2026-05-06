@@ -1,317 +1,249 @@
-# 🐦 Construyendo Flappy Bird — Rama `4.Input&Pipes`
-## El pájaro salta y aparece la primera tubería
+# 🐦 Construyendo Flappy Bird — Rama `5.PipeTop&Counter`
+## La tubería se completa y las tuberías se mueven
 
-> *El pájaro cae por gravedad y se queda en el suelo. Un juego sin interacción no es un juego. En esta rama le damos vida al jugador: el toque de pantalla hará saltar al pájaro. Además, colocamos en escena el primer obstáculo real — una tubería inferior — sentando las bases para todo lo que vendrá después.*
+> *En la rama anterior colocamos una tubería inferior estática. Pero Flappy Bird necesita pares de tuberías — una abajo y otra arriba — con un hueco entre ellas para que el pájaro pase. Además, las tuberías deben moverse hacia la izquierda, y necesitamos un sensor invisible para detectar cuándo el pájaro cruza el hueco. Esta rama transforma un obstáculo aislado en la mecánica central del juego.*
 
 ---
 
 ## ¿Qué cambia en esta rama?
 
-En la rama anterior (`3.World`) el pájaro caía por gravedad y se detenía en el suelo. No había forma de controlarlo ni había obstáculos. Esta rama introduce **tres novedades**:
+La rama 4 dejó una sola tubería inferior, quieta, sin compañera. En esta rama damos tres pasos grandes:
 
-1. **Input del jugador**: al tocar la pantalla, el pájaro salta hacia arriba.
-2. **Un nuevo actor**: `Pipes`, la tubería inferior, que introduce el concepto de `KinematicBody` y `PolygonShape`.
-3. **Fondo visual**: el background se añade como `Image` del Stage, integrándolo en el sistema de actores.
+1. **Tubería superior**: un segundo body y textura colocados encima del hueco.
+2. **Movimiento**: los tres cuerpos se desplazan hacia la izquierda a velocidad constante.
+3. **Sensor contador**: un cuerpo invisible entre las dos tuberías que servirá para detectar cuándo el pájaro cruza el hueco y sumar puntos.
 
-Antes de escribir código, conviene entender la mecánica que estamos construyendo. Piensa en Flappy Bird como un péndulo vertical: la gravedad tira constantemente del pájaro hacia abajo, y cada toque de pantalla lo empuja brevemente hacia arriba. El jugador no controla la posición del pájaro directamente — controla su velocidad vertical. Esta distinción es fundamental para entender cómo funciona el salto.
-
----
-
-## Paso 1 — Capturar el toque de pantalla
-
-### El problema: ¿cuándo ha tocado el jugador?
-
-LibGDX ofrece dos formas de detectar si el jugador está tocando la pantalla. Parecen similares, pero su comportamiento es radicalmente distinto:
-
-```java
-Gdx.input.isTouched()      // true MIENTRAS el dedo está en pantalla
-Gdx.input.justTouched()    // true solo en el PRIMER frame del toque
-```
-
-Para entender la diferencia, imagina que mantienes el dedo apoyado durante medio segundo. A 60 FPS, eso son aproximadamente 30 frames:
-
-```
-Frame:    1    2    3    4    5   ...  28   29   30   31
-Dedo:    [TOCA────────────────────────────────────SUELTA]
-
-isTouched():   ✓    ✓    ✓    ✓    ✓   ...   ✓    ✓    ✓    ✗
-justTouched():  ✓    ✗    ✗    ✗    ✗   ...   ✗    ✗    ✗    ✗
-```
-
-Con `isTouched()`, el pájaro recibiría el impulso de salto **30 veces seguidas** — se dispararía fuera del mapa. Con `justTouched()`, solo lo recibe **una vez**, en el frame exacto del contacto. Un toque = un salto.
-
-### Analogía: el timbre de una puerta
-
-`isTouched()` es como un timbre que suena mientras mantienes el dedo pulsado: **RIIIIIIING**. `justTouched()` es como un timbre digital que emite un solo pitido por pulsación: **DING**. Para el salto del pájaro necesitas el pitido, no el timbrazo continuo.
-
-### ¿Dónde colocamos la lectura del input?
-
-En esta rama, el input se lee **dentro del método `act()` de `Bird`**, no en el `render()` de `GameScreen`. Esta es una decisión de diseño importante que conecta con lo que ya sabéis de Programación Orientada a Objetos: el pájaro es responsable de su propio comportamiento. La pantalla no le dice cuándo saltar; el pájaro lo decide por sí mismo.
-
-```java
-@Override
-public void act(float delta) {
-    boolean jump = Gdx.input.justTouched();
-
-    if (jump && this.state == STATE_NORMAL) {
-        this.body.setLinearVelocity(0, JUMP_SPEED);
-    }
-}
-```
-
-Fíjate en la condición doble: el salto solo ocurre si `justTouched()` devuelve `true` **y** el pájaro está en estado `STATE_NORMAL`. Esto previene que un pájaro muerto siga saltando — algo que implementaremos completamente cuando añadamos las colisiones.
-
-> ⚠️ **Error típico en clase:** Algunos alumnos ponen la lectura de input en `render()` de `GameScreen` y llaman a un método `bird.jump()`. Funciona, pero rompe la encapsulación: ahora `GameScreen` necesita conocer la lógica interna de Bird. Si mañana quisiéramos que el pájaro saltara con doble toque, tendríamos que modificar `GameScreen` en lugar de solo modificar `Bird`.
+Al terminar esta rama, tendrás el par completo de tuberías moviéndose por la pantalla — el obstáculo fundamental de Flappy Bird.
 
 ---
 
-## Paso 2 — El salto: `setLinearVelocity()`
+## Paso 1 — Entender la estructura completa de un par de tuberías
 
-### ¿Cómo salta el pájaro en Box2D?
+### La anatomía del obstáculo
 
-Recordemos de la rama anterior que Box2D controla la física del pájaro. Su `DynamicBody` tiene una velocidad que la gravedad va modificando cada frame. Para hacer saltar al pájaro, necesitamos **cambiar su velocidad vertical** de golpe.
-
-Box2D ofrece varias formas de mover un cuerpo dinámico:
-
-| Método | Efecto | Analogía |
-|--------|--------|----------|
-| `setLinearVelocity(x, y)` | Establece la velocidad exacta | Cambiar la marcha de un coche instantáneamente |
-| `applyLinearImpulse(v, p, w)` | Suma un impulso a la velocidad actual | Dar un empujón a alguien que ya se mueve |
-| `applyForce(v, p, w)` | Aplica fuerza continua | Soplar una vela: efecto gradual |
-
-En esta rama usamos `setLinearVelocity()`:
-
-```java
-private static final float JUMP_SPEED = 50f;
-
-// En act():
-this.body.setLinearVelocity(0, JUMP_SPEED);
-```
-
-**¿Qué hace esta línea exactamente?** Dos cosas simultáneas:
-- Establece la velocidad **horizontal** en `0` — el pájaro no se mueve lateralmente.
-- Establece la velocidad **vertical** en `JUMP_SPEED` (50 unidades/segundo hacia arriba).
-
-Después de este instante, la gravedad del mundo (`-10`) comienza a frenar la subida, la velocidad va disminuyendo hasta llegar a 0 (punto más alto del salto), y luego el pájaro empieza a caer de nuevo. Esto crea la parábola característica de Flappy Bird.
-
-### ¿Por qué `setLinearVelocity()` y no `applyLinearImpulse()`?
-
-Ambas opciones son válidas, pero tienen comportamientos diferentes:
+Cada par de tuberías es un único `Actor` (`Pipes`) que gestiona internamente **tres cuerpos Box2D**:
 
 ```
-Situación: el pájaro cae a -30 unidades/s
-
-Con setLinearVelocity(0, 50):
-  Velocidad antes: -30       → Velocidad después: +50
-  El salto SIEMPRE produce el mismo arco
-
-Con applyLinearImpulse(0, 50):
-  Velocidad antes: -30       → Velocidad después: -30 + 50 = +20
-  El salto depende de la velocidad actual (menor arco si cae rápido)
+  ┌──────────┐
+  │          │  ← bodyTop (KinematicBody)
+  │ pipeTop  │     Textura: pipeUp del atlas
+  │          │     
+  └──────────┘
+                ← COUNTER_HEIGHT (2 unidades de hueco)
+   [counter]    ← bodyCounter (KinematicBody + sensor)
+                   No se dibuja, solo detecta al pájaro
+  ┌──────────┐
+  │          │
+  │ pipeDown │  ← bodyDown (KinematicBody)
+  │          │     Textura: pipeDown del atlas
+  └──────────┘
 ```
 
-`setLinearVelocity()` **reemplaza** la velocidad, así que cada salto es idéntico sin importar si el pájaro estaba subiendo o cayendo. Esto da un control más predecible al jugador. Es la opción más simple y directa para este proyecto.
+¿Por qué tres cuerpos y no uno solo con una forma en "U"? Porque Box2D no permite formas cóncavas (con entrantes). Una "U" tendría un hueco interior, que es exactamente una forma cóncava. La solución es usar dos rectángulos independientes (las tuberías) y un tercer cuerpo separado para el sensor.
 
-### El valor de `JUMP_SPEED`
+### Analogía: una puerta automática
 
-El valor `50f` puede parecer arbitrario. Es el resultado de prueba y error hasta encontrar un salto que "se sienta bien". Demasiado bajo (`20f`) y el pájaro apenas sube; demasiado alto (`100f`) y se sale de la pantalla. La relación entre la gravedad (`-10`) y la velocidad del salto (`50`) determina la altura y duración del arco.
+Piensa en las puertas automáticas de un centro comercial. Hay dos elementos físicos (los dos paneles de cristal) y un sensor de movimiento invisible entre ellos. Cuando pasas, el sensor te detecta pero no te bloquea — no puedes atravesar los cristales, pero el sensor no ofrece resistencia. Es exactamente lo que construimos: dos tuberías sólidas y un sensor invisible en el hueco.
 
 ---
 
-## Paso 3 — Estados del pájaro: preparando el futuro
+## Paso 2 — Nuevas constantes y atributos
 
-### ¿Por qué estados tan pronto?
-
-Aunque en esta rama todavía no hay colisiones que maten al pájaro, introducimos un sistema de estados sencillo. Es una práctica habitual en desarrollo de videojuegos: **preparar la estructura antes de necesitarla**, para no tener que refactorizar después.
+### Constantes añadidas en `Pipes`
 
 ```java
-private static final int STATE_NORMAL = 0;
-private static final int STATE_DEAD = 1;
-
-private int state;
+private static final float COUNTER_HEIGHT = 2f;  // altura del hueco entre tuberías
+private static final float SPEED = -0.2f;         // velocidad horizontal (negativa = izquierda)
 ```
 
-El estado se inicializa a `STATE_NORMAL` en el constructor y se comprueba antes de permitir el salto:
+`COUNTER_HEIGHT` define la distancia entre la parte superior de `bodyDown` y la parte inferior de `bodyTop`. Es el espacio por el que el pájaro debe pasar. Un valor de `2f` unidades del mundo es suficiente para que quepa el pájaro (cuyo radio es `0.30f`), pero exige precisión.
+
+`SPEED` es la velocidad horizontal de las tuberías. El valor `-0.2f` las mueve lentamente hacia la izquierda. En ramas posteriores ajustaremos este valor para encontrar la dificultad adecuada.
+
+### Nuevos atributos
+
+En la rama 4, `Pipes` solo tenía un body y una fixture. Ahora tiene tres de cada uno:
 
 ```java
-if (jump && this.state == STATE_NORMAL) {
-    this.body.setLinearVelocity(0, JUMP_SPEED);
-}
+// Texturas
+private TextureRegion pipeDownTR;
+private TextureRegion pipeTopTR;       // ← NUEVO
+
+// Bodies
+private Body bodyDown;
+private Body bodyTop;                  // ← NUEVO
+private Body bodyCounter;              // ← NUEVO
+
+// Fixtures
+private Fixture fixtureDown;
+private Fixture fixtureTop;            // ← NUEVO
+private Fixture fixtureCounter;        // ← NUEVO
 ```
-
-En ramas futuras, cuando implementemos colisiones, bastará con poner `this.state = STATE_DEAD` para que el pájaro deje de responder al input. No necesitaremos tocar la lógica del salto.
-
-### Conexión con POO: el patrón State simplificado
-
-En Programación Orientada a Objetos habéis visto el patrón **State**, donde cada estado es una clase independiente con su propio comportamiento. Aquí usamos una versión simplificada con constantes enteras. Para un juego con solo dos estados (vivo/muerto), esto es suficiente. Si tuviéramos más estados (volando, cayendo, herido, invencible...), convendría evolucionar hacia el patrón completo.
 
 ---
 
-## Paso 4 — Cambios en `Bird.java` respecto a la rama anterior
+## Paso 3 — El constructor actualizado
 
-### Constructor parametrizado
-
-En la rama 3, la posición del pájaro estaba fija en el código de `createBody()`. Ahora el constructor recibe un `Vector2` con la posición inicial, lo que permite colocar el pájaro donde queramos desde `GameScreen`:
+El constructor ahora recibe **dos texturas** en lugar de una:
 
 ```java
-public Bird(World world, Animation<TextureRegion> animation, Vector2 position) {
-    this.birdAnimation = animation;
-    this.position = position;
+public Pipes(World world, TextureRegion trpDown, TextureRegion trpTop, Vector2 position) {
     this.world = world;
-    this.stateTime = 0f;
-    this.state = STATE_NORMAL;
+    this.pipeDownTR = trpDown;
+    this.pipeTopTR = trpTop;
 
-    createBody();
+    createBodyPipeDown(position);
+    createBodyPipeTop();
+    createCounter();
     createFixture();
 }
 ```
 
-**¿Por qué este cambio?** Porque la posición del pájaro es una decisión de la pantalla de juego, no del pájaro. Si mañana quisiéramos una pantalla de tutorial donde el pájaro empieza en otra posición, no tendríamos que tocar `Bird.java`.
+El orden de creación es importante:
+1. **Primero `bodyDown`**: porque es el que recibe la posición como parámetro. Los demás se posicionan relativamente a él.
+2. **Después `bodyTop`**: se posiciona a partir de la posición de `bodyDown`.
+3. **Después `bodyCounter`**: se posiciona entre los dos anteriores.
+4. **Por último `createFixture()`**: necesita que ambos bodies existan para asignarles sus formas.
 
-### Separación de `createBody()` y `createFixture()`
-
-En la rama 3, `createBody()` hacía todo: creaba el body, la shape y la fixture en un solo método. Ahora están separados en dos métodos:
-
-```java
-private void createBody() {
-    BodyDef bodyDef = new BodyDef();
-    bodyDef.position.set(this.position);
-    bodyDef.type = BodyDef.BodyType.DynamicBody;
-    this.body = this.world.createBody(bodyDef);
-}
-
-private void createFixture() {
-    CircleShape circle = new CircleShape();
-    circle.setRadius(0.30f);
-    this.fixture = this.body.createFixture(circle, 8);
-    this.fixture.setUserData(USER_BIRD);
-    circle.dispose();
-}
-```
-
-Esta separación no es casual: al guardar la referencia a la `Fixture` en una variable de instancia, podemos destruirla individualmente en `detach()`.
-
-### `userData` en la Fixture, no en el Body
-
-En la rama 3, el identificador `USER_BIRD` se asignaba al `Body`:
-
-```java
-// Rama 3:
-body.setUserData(USER_BIRD);
-```
-
-Ahora se asigna a la `Fixture`:
-
-```java
-// Rama 4:
-this.fixture.setUserData(USER_BIRD);
-```
-
-**¿Por qué este cambio?** Un `Body` puede tener varias fixtures (varias formas). Al asignar el `userData` a la fixture, cuando detectemos colisiones podremos saber exactamente **qué parte** del cuerpo ha colisionado. Para el pájaro (que solo tiene una fixture circular) da igual, pero es una buena práctica que nos será útil con las tuberías.
-
-### El `draw()` con valores literales
-
-El método `draw()` usa valores literales para el offset y el tamaño del sprite en lugar de constantes `WIDTH`/`HEIGHT`:
-
-```java
-@Override
-public void draw(Batch batch, float parentAlpha) {
-    setPosition(body.getPosition().x - 0.4f, body.getPosition().y - 0.25f);
-    batch.draw(this.birdAnimation.getKeyFrame(stateTime, true),
-        getX(), getY(), 0.8f, 0.5f);
-
-    stateTime += Gdx.graphics.getDeltaTime();
-}
-```
-
-Los valores `0.4f` y `0.25f` son las mitades de `0.8f` y `0.5f` (ancho y alto del sprite). Recuerda de la rama 3: `body.getPosition()` devuelve el **centro** del cuerpo, pero `batch.draw()` dibuja desde la **esquina inferior izquierda**, así que hay que restar la mitad.
-
-Otro detalle importante: `stateTime` se incrementa aquí con `Gdx.graphics.getDeltaTime()` en lugar de con el `delta` de `act()`. Ambos valores son prácticamente idénticos — `getDeltaTime()` devuelve el tiempo transcurrido desde el último frame —, pero al hacerlo en `draw()` nos aseguramos de que la animación avanza incluso si `act()` cambia en el futuro.
-
-### El nuevo `detach()`
-
-Ahora `detach()` destruye la fixture antes del body:
-
-```java
-public void detach() {
-    this.body.destroyFixture(this.fixture);
-    this.world.destroyBody(this.body);
-}
-```
-
-**¿Por qué destruir la fixture explícitamente?** En realidad, `destroyBody()` destruye automáticamente todas las fixtures del body. Hacerlo explícitamente es una práctica defensiva que deja claro qué recursos se liberan y en qué orden. Además, en un escenario más complejo donde quisieras quitar solo una fixture sin destruir el body entero, necesitarías esta referencia.
+Si alteraras este orden — por ejemplo, creando `bodyTop` antes de `bodyDown` — obtendrías un `NullPointerException` porque `createBodyPipeTop()` accede a `bodyDown.getPosition()`.
 
 ---
 
-## Paso 5 — La clase `Pipes`: el primer obstáculo
+## Paso 4 — Posicionar la tubería superior relativamente
 
-### ¿Qué es una tubería en términos de Box2D?
+### El cálculo de posición
 
-Una tubería es un obstáculo que:
-- **No se mueve por gravedad**: no debe caer.
-- **Participa en colisiones**: el pájaro debe poder chocar con ella.
-- **Se moverá en el futuro**: en ramas posteriores las tuberías avanzarán hacia la izquierda.
-
-Revisemos los tres tipos de body que conocemos de la rama 3 y por qué `KinematicBody` es la elección correcta:
-
-```
-DynamicBody      → Afectado por gravedad y fuerzas    → El pájaro
-StaticBody       → Inmóvil, no se puede mover nunca   → Suelo y techo
-KinematicBody    → No le afecta la gravedad,           → Las tuberías ✓
-                   pero SE PUEDE mover por código
-```
-
-¿Por qué no `StaticBody`? Porque en ramas posteriores las tuberías se moverán a velocidad constante hacia la izquierda, y un `StaticBody` no puede moverse. Usar `KinematicBody` desde el principio evita tener que cambiar el tipo más adelante.
-
-### La analogía: una cinta transportadora
-
-Un `KinematicBody` es como un objeto sobre una cinta transportadora en una fábrica: tú controlas su velocidad (puedes acelerarla, pararla, invertirla), pero la gravedad no le afecta — el objeto no se cae de la cinta. Cuando otros objetos chocan contra él, Box2D detecta la colisión normalmente.
-
-### Estructura de la clase
-
-La clase `Pipes` sigue exactamente el mismo patrón que ya conoces de `Bird`: extiende `Actor`, tiene un `Body` y una `Fixture`, y se crea con el patrón **definir → crear → dar forma → limpiar**:
+La posición de `bodyTop` se calcula a partir de `bodyDown`:
 
 ```java
-public class Pipes extends Actor {
-
-    private static final float PIPE_WIDTH = 1f;
-    private static final float PIPE_HEIGHT = 4f;
-
-    private TextureRegion pipeDownTR;
-    private Body bodyDown;
-    private Fixture fixtureDown;
-    private World world;
-
-    public Pipes(World world, TextureRegion trpDown, Vector2 position) {
-        this.world = world;
-        this.pipeDownTR = trpDown;
-
-        createBodyPipeDown(position);
-        createFixture();
-    }
-}
-```
-
-Observa que los nombres incluyen `Down` (inferior): `pipeDownTR`, `bodyDown`, `fixtureDown`. Esto es intencional — en la rama siguiente añadiremos la tubería superior, y estos nombres nos ayudarán a distinguirlas.
-
-### Crear el body cinemático
-
-```java
-private void createBodyPipeDown(Vector2 position) {
+private void createBodyPipeTop() {
     BodyDef def = new BodyDef();
-    def.position.set(position);
-    def.type = BodyDef.BodyType.KinematicBody;
+    def.position.x = bodyDown.getPosition().x;
+    def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT + COUNTER_HEIGHT;
 
-    bodyDown = world.createBody(def);
-    bodyDown.setUserData(Utils.USER_PIPE_DOWN);
+    def.type = BodyDef.BodyType.KinematicBody;
+    bodyTop = world.createBody(def);
+    bodyTop.setUserData(Utils.USER_PIPE_UP);
+    bodyTop.setLinearVelocity(SPEED, 0);
 }
 ```
 
-La posición se recibe como parámetro. En `GameScreen.show()` pasamos `new Vector2(3.75f, 2f)`, que coloca el **centro** del body en las coordenadas (3.75, 2) del mundo.
+La línea clave es el cálculo de `def.position.y`. Recuerda que `bodyDown.getPosition()` devuelve el **centro** del body inferior. Para llegar al centro del body superior, necesitamos sumar:
 
-### La fixture: `PolygonShape` en vez de `CircleShape`
+```
+Centro bodyDown:    bodyDown.getPosition().y
+                         │
+                    ┌─────┴─────┐
+                    │  bodyDown │  ← mitad superior = PIPE_HEIGHT/2
+                    └───────────┘
+                         ↑ PIPE_HEIGHT/2
+                         
+                    (hueco)        ← COUNTER_HEIGHT completo
+                         
+                         ↑ PIPE_HEIGHT/2
+                    ┌───────────┐
+                    │  bodyTop  │  ← mitad inferior = PIPE_HEIGHT/2
+                    └─────┬─────┘
+                         │
+Centro bodyTop:     bodyDown.y + PIPE_HEIGHT + COUNTER_HEIGHT
+```
 
-El pájaro usaba un `CircleShape` porque su forma es redondeada. La tubería es rectangular, así que usamos `PolygonShape.setAsBox()`:
+Pero espera: ¿no deberían ser `PIPE_HEIGHT/2 + COUNTER_HEIGHT + PIPE_HEIGHT/2`? Sí, y eso simplifica exactamente a `PIPE_HEIGHT + COUNTER_HEIGHT`. Las dos mitades de `PIPE_HEIGHT` (la mitad superior de bodyDown y la mitad inferior de bodyTop) se suman en un `PIPE_HEIGHT` completo.
+
+### ¿Por qué posicionamiento relativo?
+
+Usar la posición del bodyDown como referencia tiene una ventaja: si cambias la posición del par de tuberías en `GameScreen`, solo tocas un parámetro. La tubería superior y el sensor se recalculan automáticamente.
+
+---
+
+## Paso 5 — El movimiento: velocidad en los tres cuerpos
+
+### `setLinearVelocity()` en `KinematicBody`
+
+Hasta ahora las tuberías estaban quietas. Esta rama añade movimiento horizontal con una sola línea por body:
+
+```java
+bodyDown.setLinearVelocity(SPEED, 0);     // en createBodyPipeDown()
+bodyTop.setLinearVelocity(SPEED, 0);      // en createBodyPipeTop()
+bodyCounter.setLinearVelocity(SPEED, 0);  // en createCounter()
+```
+
+Recordemos de la rama 3 que un `KinematicBody` no se ve afectado por la gravedad ni por fuerzas externas. Su velocidad solo cambia si tú la cambias explícitamente. Al establecer `SPEED = -0.2f`, los tres cuerpos se moverán 0.2 unidades por segundo hacia la izquierda, indefinidamente.
+
+### ¿Por qué la misma velocidad en los tres?
+
+Si un body se moviera más rápido que otro, el par de tuberías se "desalinearía" — la tubería superior se separaría de la inferior. Los tres deben moverse siempre juntos, como si fueran una única pieza rígida.
+
+> ⚠️ **Error típico:** Olvidar poner `setLinearVelocity()` en uno de los tres bodies. El resultado es que dos tuberías se mueven y una se queda quieta — un bug visual muy evidente pero cuya causa no siempre es obvia.
+
+### ¿Por qué no mover el Actor en vez de los bodies?
+
+Podrías pensar: "¿por qué no mover el `Actor` con `setPosition()` en `act()` y sincronizar los bodies?". La respuesta tiene que ver con las colisiones. Box2D detecta colisiones entre **bodies**, no entre actores. Si mueves el actor pero no el body, el pájaro no chocará con la tubería aunque visualmente estén en la misma posición. El body es la "verdad física"; el actor es solo la representación visual.
+
+---
+
+## Paso 6 — El sensor contador: colisión sin contacto
+
+### ¿Qué es un sensor?
+
+Un sensor en Box2D es una fixture que **detecta solapamiento** pero **no produce respuesta física**. El pájaro puede atravesarlo sin rebotar, pero Box2D notifica que ha ocurrido un contacto. Es perfecto para detectar cuándo el pájaro cruza el hueco entre las tuberías.
+
+### Analogía: una célula fotoeléctrica
+
+Piensa en los sensores de las puertas de ascensor: un haz de luz invisible cruza la puerta. Cuando algo lo interrumpe, el sensor lo detecta, pero el haz no bloquea físicamente el paso. Nuestro `bodyCounter` funciona igual: ocupa un espacio entre las tuberías, y cuando el pájaro lo cruza, Box2D lo registra como un contacto, pero el pájaro pasa sin obstáculo.
+
+### Implementación del sensor
+
+```java
+public void createCounter() {
+    BodyDef bodyDef = new BodyDef();
+    bodyDef.position.x = this.bodyDown.getPosition().x;
+    bodyDef.position.y = (this.bodyDown.getPosition().y + this.bodyTop.getPosition().y) / 2f;
+    bodyDef.type = BodyDef.BodyType.KinematicBody;
+
+    this.bodyCounter = this.world.createBody(bodyDef);
+    this.bodyCounter.setLinearVelocity(SPEED, 0);
+
+    PolygonShape polygonShape = new PolygonShape();
+    polygonShape.setAsBox(0.1f, 0.90f);
+
+    this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
+    this.fixtureCounter.setSensor(true);        // ← esto lo convierte en sensor
+    this.fixtureCounter.setUserData(Utils.USER_COUNTER);
+    polygonShape.dispose();
+}
+```
+
+Analicemos cada parte:
+
+**Posición vertical**: `(bodyDown.y + bodyTop.y) / 2f` — el punto medio entre los centros de ambos bodies. Esto coloca el sensor exactamente en el centro del hueco.
+
+**Forma estrecha**: `setAsBox(0.1f, 0.90f)` crea un rectángulo muy estrecho (0.2 de ancho total) y relativamente alto (1.8 de alto total). Es estrecho para que el pájaro lo cruce en pocos frames, evitando detecciones dobles. Si fuera ancho, el pájaro podría estar "dentro" del sensor durante varios frames y contar puntos múltiples veces.
+
+**`setSensor(true)`**: esta es la línea crucial. Sin ella, el body sería sólido y bloquearía al pájaro en el hueco. Con `setSensor(true)`, la fixture deja de producir respuestas físicas pero sigue generando eventos de contacto que podremos escuchar con un `ContactListener` en ramas futuras.
+
+**`userData` en la fixture**: igual que en Bird, el identificador `USER_COUNTER` se asigna a la fixture, no al body. Esto nos permitirá distinguir en el `ContactListener` si el pájaro ha tocado una tubería (muerte) o el sensor (punto).
+
+### Diferencia clave: `userData` en body vs fixture
+
+Observa que en esta clase se mezclan ambos enfoques:
+
+```java
+// userData en el BODY:
+bodyDown.setUserData(Utils.USER_PIPE_DOWN);
+bodyTop.setUserData(Utils.USER_PIPE_UP);
+
+// userData en la FIXTURE:
+this.fixtureCounter.setUserData(Utils.USER_COUNTER);
+```
+
+Ambos funcionan. Cuando implementemos el `ContactListener`, necesitaremos comprobar tanto `body.getUserData()` como `fixture.getUserData()` dependiendo de qué cuerpo estemos inspeccionando.
+
+---
+
+## Paso 7 — Reutilizar la `PolygonShape` para ambas tuberías
+
+### Optimización sutil en `createFixture()`
 
 ```java
 private void createFixture() {
@@ -319,33 +251,25 @@ private void createFixture() {
     shape.setAsBox(PIPE_WIDTH / 2, PIPE_HEIGHT / 2);
 
     this.fixtureDown = bodyDown.createFixture(shape, 8);
+    this.fixtureTop = bodyTop.createFixture(shape, 8);
+
     shape.dispose();
 }
 ```
 
-> ⚠️ **Cuidado con `setAsBox()`**: este es uno de los errores más frecuentes con Box2D. `setAsBox()` recibe las **mitades** del ancho y alto, no las dimensiones completas. Si la tubería mide 1×4 unidades, le pasas `(0.5, 2)`. Si le pasas `(1, 4)`, la forma será de 2×8 — ¡el doble de grande!
+Fíjate en que se crea **una sola** `PolygonShape` y se usa para las dos fixtures. Esto es posible porque ambas tuberías tienen exactamente las mismas dimensiones (`PIPE_WIDTH × PIPE_HEIGHT`). Cuando llamas a `createFixture()`, Box2D **copia** los datos de la shape internamente, así que puedes reutilizar el mismo objeto shape y hacer `dispose()` una sola vez al final.
 
-```
-setAsBox(PIPE_WIDTH / 2, PIPE_HEIGHT / 2)
-         └── 0.5 ──┘     └── 2.0 ──┘
+Es el mismo principio de la rama 3: `shape.dispose()` libera la memoria nativa, y no afecta a las fixtures ya creadas porque Box2D ya copió lo que necesitaba.
 
-Resultado:  rectángulo de 1.0 × 4.0 ✓
+### ¿Por qué el sensor tiene su propia shape?
 
-Si te equivocas y pones setAsBox(PIPE_WIDTH, PIPE_HEIGHT):
-                          └── 1.0 ──┘   └── 4.0 ──┘
-
-Resultado:  rectángulo de 2.0 × 8.0 ✗  (¡el doble!)
-```
-
-Puedes verificar visualmente si la forma coincide con la textura gracias al `Box2DDebugRenderer` que ya tienes activo.
+El sensor usa dimensiones diferentes (`0.1f × 0.90f`) y se crea en un método separado (`createCounter()`). No comparte shape con las tuberías.
 
 ---
 
-## Paso 6 — Dibujar la tubería
+## Paso 8 — Dibujar ambas tuberías
 
-### El método `draw()` de Pipes
-
-Al igual que en `Bird`, necesitamos sincronizar la posición visual del `Actor` con la posición física del `Body`:
+### El `draw()` actualizado
 
 ```java
 @Override
@@ -355,91 +279,58 @@ public void draw(Batch batch, float parentAlpha) {
         this.bodyDown.getPosition().y - (PIPE_HEIGHT / 2)
     );
     batch.draw(this.pipeDownTR, getX(), getY(), PIPE_WIDTH, PIPE_HEIGHT);
+
+    setPosition(
+        this.bodyTop.getPosition().x - (PIPE_WIDTH / 2),
+        this.bodyTop.getPosition().y - (PIPE_HEIGHT / 2)
+    );
+    batch.draw(this.pipeTopTR, getX(), getY(), PIPE_WIDTH, PIPE_HEIGHT);
 }
 ```
 
-El patrón es idéntico al del pájaro y se repite en prácticamente todos los actores con cuerpo físico:
+Se dibuja primero la tubería inferior y después la superior. Para cada una:
+1. Se sincroniza `setPosition()` con la posición del body correspondiente (restando la mitad para ir del centro a la esquina inferior izquierda).
+2. Se dibuja con `batch.draw()` usando la textura correspondiente.
 
-```
-Body.getPosition()  →  devuelve el CENTRO del cuerpo
-batch.draw()        →  espera la ESQUINA INFERIOR IZQUIERDA
-                       → restar mitad del ancho y mitad del alto
+**Detalle importante:** se llama a `setPosition()` dos veces. Esto significa que la posición final del Actor (la que usaría `getX()`/`getY()` fuera de `draw()`) será la de la tubería superior. Esto no causa problemas porque no usamos la posición del Actor para nada más — todo se calcula desde los bodies.
 
-  ┌─────────────┐
-  │             │  ↑
-  │   CENTRO ●  │  PIPE_HEIGHT
-  │             │  ↓
-  └─────────────┘
-  ↑── PIPE_WIDTH ──↑
-  
-  batch.draw necesita este punto:
-  ↓
-  ●─────────────┐
-  │             │
-  │   CENTRO    │
-  │             │
-  └─────────────┘
-```
+### ¿Y el sensor? ¿No se dibuja?
 
-### `act()` vacío: ¿por qué existe?
+No. El sensor es **invisible**. No tiene textura asociada ni debe tenerla — es un concepto puramente físico. Solo lo verás con el `Box2DDebugRenderer` activado: aparecerá como un rectángulo estrecho entre las dos tuberías.
 
-```java
-@Override
-public void act(float delta) {
-    super.act(delta);
-}
-```
+---
 
-En esta rama la tubería no se mueve ni tiene lógica propia. El método `act()` solo llama a `super.act()`. ¿Por qué dejarlo entonces? Porque en ramas posteriores necesitaremos añadir lógica aquí (mover la tubería, auto-eliminarse al salir de la pantalla), y tener el método ya preparado facilita la evolución del código.
-
-### `detach()`: liberar recursos
+## Paso 9 — Liberar recursos: el `detach()` ampliado
 
 ```java
 public void detach() {
     bodyDown.destroyFixture(fixtureDown);
     world.destroyBody(bodyDown);
+
+    this.bodyTop.destroyFixture(fixtureTop);
+    this.world.destroyBody(this.bodyTop);
 }
 ```
 
-El mismo patrón que en `Bird`: destruir fixture, después body. Es fundamental para evitar fugas de memoria nativa.
+Se destruyen las fixtures y bodies de ambas tuberías. Observa que **no se destruye `bodyCounter`**. Esto podría considerarse un olvido, pero en la práctica, cuando destruyes el `World` completo al hacer `dispose()` de `GameScreen`, se destruyen automáticamente todos los bodies restantes.
+
+> ⚠️ **Nota para el alumno:** En un juego completo, sería buena práctica destruir también el `bodyCounter` y su fixture en `detach()` para no dejar recursos sueltos. Podrías añadirlo como ejercicio.
 
 ---
 
-## Paso 7 — El fondo como `Image` del Stage
+## Paso 10 — Cambios en `GameScreen` y `AssetMan`
 
-### ¿Por qué un `Image` y no `batch.draw()`?
+### Cargar la textura de la tubería superior
 
-En ramas anteriores podríamos haber dibujado el fondo directamente con `batch.draw()` en el `render()` de `GameScreen`. Esta rama usa un enfoque diferente: crear un `Image` (que es un `Actor` de Scene2D) y añadirlo al Stage:
+En `AssetMan` se añade un nuevo método:
 
 ```java
-public void addBackground() {
-    this.background = new Image(mainGame.assetManager.getBackground());
-    this.background.setPosition(0, 0);
-    this.background.setSize(WORLD_WIDTH, WORLD_HEIGHT);
-    this.stage.addActor(this.background);
+public TextureRegion getPipeTopTR() {
+    return this.textureAtlas.findRegion(PIPE_UP);
 }
 ```
 
-**Ventajas de usar `Image`:**
-- Se integra en el sistema de actores del Stage y se dibuja automáticamente con `stage.draw()`.
-- Al ser el **primer actor añadido**, se dibuja **primero** (queda detrás de todo lo demás). El Stage dibuja los actores en el orden en que fueron añadidos.
-- No necesitas gestionar manualmente el `batch.begin()` / `batch.end()`.
-
-### Orden de añadido = orden de dibujado
-
-```
-stage.addActor(background);   // Se dibuja 1º → capa más profunda
-stage.addActor(bird);         // Se dibuja 2º → encima del fondo
-stage.addActor(pipes);        // Se dibuja 3º → encima de todo
-```
-
-Si añadieras el background después del pájaro, el fondo lo taparía. El Stage funciona como capas: lo primero que añades queda debajo, lo último queda encima.
-
----
-
-## Paso 8 — Integración en `GameScreen`
-
-### El método `show()` completo
+### `show()` actualizado
 
 ```java
 @Override
@@ -448,76 +339,78 @@ public void show() {
     addBird();
 
     TextureRegion pipeTRDown = mainGame.assetManager.getPipeDownTR();
-    this.pipes = new Pipes(this.world, pipeTRDown, new Vector2(3.75f, 2f));
+    TextureRegion pipeTRTop = mainGame.assetManager.getPipeTopTR();
+    this.pipes = new Pipes(this.world, pipeTRDown, pipeTRTop, new Vector2(3.75f, 0f));
     this.stage.addActor(this.pipes);
 }
 ```
 
-El orden es deliberado:
-1. Primero el fondo (se dibuja detrás de todo).
-2. Después el pájaro.
-3. Por último la tubería (se dibuja encima del fondo pero podría quedar delante o detrás del pájaro según sus posiciones).
+Fíjate en que la posición ha cambiado de `(3.75f, 2f)` en la rama 4 a `(3.75f, 0f)`. Este `0f` es la posición vertical del **centro** de la tubería inferior. Como `PIPE_HEIGHT = 4f`, la mitad inferior del body (`4/2 = 2 unidades`) queda por debajo de `y=0`, es decir, fuera de la pantalla visible. La tubería inferior asoma parcialmente por el borde inferior de la pantalla.
 
-### Añadir `getPipeDownTR()` en `AssetMan`
+### `hide()` ahora limpia las tuberías
 
 ```java
-public TextureRegion getPipeDownTR() {
-    return this.textureAtlas.findRegion(PIPE_DOWN);
+@Override
+public void hide() {
+    this.bird.detach();
+    this.bird.remove();
+
+    this.pipes.detach();    // ← NUEVO: destruir bodies de tuberías
+    this.pipes.remove();    // ← NUEVO: quitar del Stage
 }
 ```
 
-El método devuelve un `TextureRegion` porque es el tipo que `batch.draw()` espera. Internamente, `findRegion()` devuelve un `AtlasRegion` (que extiende `TextureRegion`), pero no necesitamos las funcionalidades adicionales de `AtlasRegion`.
+En la rama 4, `hide()` solo limpiaba el pájaro. Ahora también limpia las tuberías. Si no hiciéramos esto, los bodies de las tuberías seguirían existiendo en el `World` después de cambiar de pantalla.
 
 ### Nuevas constantes en `Utils`
 
 ```java
-// Identificadores de texturas en el atlas
-public static final String PIPE_DOWN = "pipeDown";
-public static final String PIPE_UP = "pipeUp";
-
-// Identificador del cuerpo físico
-public static final String USER_PIPE_DOWN = "pipeDown";
+// Identificador de cuerpos — NUEVO en esta rama:
+public static final String USER_PIPE_UP = "pipeUp";
+public static final String USER_COUNTER = "counter";
 ```
 
-Fíjate en que `PIPE_UP` ya se define aunque en esta rama no lo usamos. Es una anticipación: la tubería superior llegará en la rama siguiente. Definir la constante ahora no cuesta nada y evita tener que volver a tocar `Utils` solo para añadir un String.
+Ahora tenemos cuatro tipos de cuerpo identificados: `USER_BIRD`, `USER_PIPE_DOWN`, `USER_PIPE_UP` y `USER_COUNTER`. Estos identificadores serán fundamentales cuando implementemos el `ContactListener` para distinguir qué ha chocado con qué.
 
 ---
 
 ## Errores comunes en esta rama
 
-### 1. "El pájaro salta sin parar"
+### 1. "La tubería superior aparece pegada a la inferior"
 
 ```java
-// ❌ MAL: usar isTouched() en vez de justTouched()
-if (Gdx.input.isTouched()) { ... }
+// ❌ MAL: olvidar sumar COUNTER_HEIGHT
+def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT;
+
+// ✓ BIEN: incluir el hueco
+def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT + COUNTER_HEIGHT;
 ```
 
-Solución: usar siempre `justTouched()` para acciones puntuales como el salto.
+Sin `COUNTER_HEIGHT`, las dos tuberías quedan pegadas sin hueco entre ellas.
 
-### 2. "La tubería es el doble de grande que la textura"
+### 2. "El pájaro choca con algo invisible en el hueco"
 
 ```java
-// ❌ MAL: pasar dimensiones completas a setAsBox
-shape.setAsBox(PIPE_WIDTH, PIPE_HEIGHT);  // → crea un box de 2×8
+// ❌ MAL: olvidar setSensor(true)
+this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
+// Sin setSensor → el counter es sólido y bloquea al pájaro
+
+// ✓ BIEN: marcar como sensor
+this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
+this.fixtureCounter.setSensor(true);
 ```
 
-Solución: `setAsBox()` recibe mitades: `shape.setAsBox(PIPE_WIDTH / 2, PIPE_HEIGHT / 2)`.
+### 3. "Una tubería se queda atrás mientras las otras se mueven"
 
-### 3. "La tubería no se ve, solo la caja del debugRenderer"
+Recuerda: los tres bodies necesitan `setLinearVelocity(SPEED, 0)`. Si olvidas ponerlo en uno, ese body se queda quieto mientras los otros dos avanzan.
 
-Si ves la caja de colisión (las líneas verdes/amarillas) pero no la textura, revisa que:
-- `this.stage.addActor(this.pipes)` esté presente en `show()`.
-- La textura que pasas a `Pipes` no sea `null` (verifica que el nombre en `Utils.PIPE_DOWN` coincide exactamente con el nombre de la región en el atlas: `"pipeDown"`).
+### 4. "NullPointerException al crear bodyTop"
 
-### 4. "El pájaro salta muerto"
+Si creas `bodyTop` antes de `bodyDown`, la línea `bodyDown.getPosition().x` lanza NPE porque `bodyDown` todavía es `null`. El orden de creación importa.
 
-```java
-// ❌ MAL: no comprobar el estado
-if (jump) { this.body.setLinearVelocity(0, JUMP_SPEED); }
+### 5. "La textura de la tubería superior está al revés"
 
-// ✓ BIEN: comprobar que está vivo
-if (jump && this.state == STATE_NORMAL) { ... }
-```
+En el atlas, `pipeDown` y `pipeUp` son texturas diferentes (una apunta hacia arriba y la otra hacia abajo). Si intercambias las texturas en el constructor, la visual quedará invertida aunque las colisiones funcionen correctamente. Verifica que `trpDown` corresponde a `PIPE_DOWN` y `trpTop` a `PIPE_UP`.
 
 ---
 
@@ -548,6 +441,8 @@ public class Utils {
     // Identificadores de cuerpos
     public static final String USER_BIRD = "bird";
     public static final String USER_PIPE_DOWN = "pipeDown";
+    public static final String USER_PIPE_UP = "pipeUp";
+    public static final String USER_COUNTER = "counter";
 }
 ```
 
@@ -562,6 +457,7 @@ import static com.mygdx.game.extra.Utils.BIRD1;
 import static com.mygdx.game.extra.Utils.BIRD2;
 import static com.mygdx.game.extra.Utils.BIRD3;
 import static com.mygdx.game.extra.Utils.PIPE_DOWN;
+import static com.mygdx.game.extra.Utils.PIPE_UP;
 
 import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.graphics.g2d.Animation;
@@ -598,6 +494,11 @@ public class AssetMan {
     // TEXTURA DE LA TUBERÍA INFERIOR
     public TextureRegion getPipeDownTR() {
         return this.textureAtlas.findRegion(PIPE_DOWN);
+    }
+
+    // TEXTURA DE LA TUBERÍA SUPERIOR
+    public TextureRegion getPipeTopTR() {
+        return this.textureAtlas.findRegion(PIPE_UP);
     }
 }
 ```
@@ -712,17 +613,30 @@ public class Pipes extends Actor {
 
     private static final float PIPE_WIDTH = 1f;
     private static final float PIPE_HEIGHT = 4f;
+    private static final float COUNTER_HEIGHT = 2f;
+    private static final float SPEED = -0.2f;
 
     private TextureRegion pipeDownTR;
+    private TextureRegion pipeTopTR;
+
     private Body bodyDown;
+    private Body bodyTop;
+    private Body bodyCounter;
+
     private Fixture fixtureDown;
+    private Fixture fixtureTop;
+    private Fixture fixtureCounter;
+
     private World world;
 
-    public Pipes(World world, TextureRegion trpDown, Vector2 position) {
+    public Pipes(World world, TextureRegion trpDown, TextureRegion trpTop, Vector2 position) {
         this.world = world;
         this.pipeDownTR = trpDown;
+        this.pipeTopTR = trpTop;
 
         createBodyPipeDown(position);
+        createBodyPipeTop();
+        createCounter();
         createFixture();
     }
 
@@ -733,6 +647,36 @@ public class Pipes extends Actor {
 
         bodyDown = world.createBody(def);
         bodyDown.setUserData(Utils.USER_PIPE_DOWN);
+        bodyDown.setLinearVelocity(SPEED, 0);
+    }
+
+    private void createBodyPipeTop() {
+        BodyDef def = new BodyDef();
+        def.position.x = bodyDown.getPosition().x;
+        def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT + COUNTER_HEIGHT;
+
+        def.type = BodyDef.BodyType.KinematicBody;
+        bodyTop = world.createBody(def);
+        bodyTop.setUserData(Utils.USER_PIPE_UP);
+        bodyTop.setLinearVelocity(SPEED, 0);
+    }
+
+    public void createCounter() {
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.position.x = this.bodyDown.getPosition().x;
+        bodyDef.position.y = (this.bodyDown.getPosition().y + this.bodyTop.getPosition().y) / 2f;
+        bodyDef.type = BodyDef.BodyType.KinematicBody;
+
+        this.bodyCounter = this.world.createBody(bodyDef);
+        this.bodyCounter.setLinearVelocity(SPEED, 0);
+
+        PolygonShape polygonShape = new PolygonShape();
+        polygonShape.setAsBox(0.1f, 0.90f);
+
+        this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
+        this.fixtureCounter.setSensor(true);
+        this.fixtureCounter.setUserData(Utils.USER_COUNTER);
+        polygonShape.dispose();
     }
 
     private void createFixture() {
@@ -740,6 +684,8 @@ public class Pipes extends Actor {
         shape.setAsBox(PIPE_WIDTH / 2, PIPE_HEIGHT / 2);
 
         this.fixtureDown = bodyDown.createFixture(shape, 8);
+        this.fixtureTop = bodyTop.createFixture(shape, 8);
+
         shape.dispose();
     }
 
@@ -755,11 +701,20 @@ public class Pipes extends Actor {
             this.bodyDown.getPosition().y - (PIPE_HEIGHT / 2)
         );
         batch.draw(this.pipeDownTR, getX(), getY(), PIPE_WIDTH, PIPE_HEIGHT);
+
+        setPosition(
+            this.bodyTop.getPosition().x - (PIPE_WIDTH / 2),
+            this.bodyTop.getPosition().y - (PIPE_HEIGHT / 2)
+        );
+        batch.draw(this.pipeTopTR, getX(), getY(), PIPE_WIDTH, PIPE_HEIGHT);
     }
 
     public void detach() {
         bodyDown.destroyFixture(fixtureDown);
         world.destroyBody(bodyDown);
+
+        this.bodyTop.destroyFixture(fixtureTop);
+        this.world.destroyBody(this.bodyTop);
     }
 }
 ```
@@ -842,7 +797,8 @@ public class GameScreen extends BaseScreen {
         addBird();
 
         TextureRegion pipeTRDown = mainGame.assetManager.getPipeDownTR();
-        this.pipes = new Pipes(this.world, pipeTRDown, new Vector2(3.75f, 2f));
+        TextureRegion pipeTRTop = mainGame.assetManager.getPipeTopTR();
+        this.pipes = new Pipes(this.world, pipeTRDown, pipeTRTop, new Vector2(3.75f, 0f));
         this.stage.addActor(this.pipes);
     }
 
@@ -850,6 +806,9 @@ public class GameScreen extends BaseScreen {
     public void hide() {
         this.bird.detach();
         this.bird.remove();
+
+        this.pipes.detach();
+        this.pipes.remove();
     }
 
     @Override
@@ -864,16 +823,18 @@ public class GameScreen extends BaseScreen {
 
 ## 🛠️ Ejercicio práctico
 
-**Objetivo:** Experimentar con las mecánicas recién implementadas y entender la relación entre parámetros.
+**Objetivo:** Entender la relación entre los tres cuerpos y experimentar con los parámetros del par de tuberías.
 
-1. **Ejecuta el proyecto.** Deberías ver el fondo de Flappy Bird, el pájaro cayendo por gravedad y la tubería fija con su textura. Al tocar/hacer clic, el pájaro salta.
+1. **Ejecuta el proyecto.** Deberías ver el par de tuberías (inferior y superior) moviéndose lentamente hacia la izquierda. Con el debugRenderer activado, verás tres cajas: las dos tuberías y el rectángulo estrecho del sensor entre ellas.
 
-2. **Ajusta la fuerza del salto:** Cambia `JUMP_SPEED` de `50f` a `20f`. ¿Puede el pájaro superar la tubería? Ahora prueba con `100f`. ¿Qué ocurre?
+2. **Ajusta el hueco:** Cambia `COUNTER_HEIGHT` de `2f` a `1f`. ¿Puede el pájaro pasar por el hueco? ¿Y con `4f`?
 
-3. **Mueve la tubería:** Cambia la posición en `GameScreen.show()` de `new Vector2(3.75f, 2f)` a `new Vector2(2f, 5f)`. ¿Dónde aparece ahora? ¿Y con `new Vector2(0f, 0f)`? ¿Por qué aparece parcialmente fuera de la pantalla?
+3. **Velocidad de las tuberías:** Cambia `SPEED` de `-0.2f` a `-1f` y luego a `-3f`. ¿En qué punto se vuelve injugable?
 
-4. **Experimenta con el tamaño:** Cambia `PIPE_WIDTH` a `2f` y `PIPE_HEIGHT` a `6f`. ¿Coincide la caja de colisión del debugRenderer con la textura dibujada? ¿Y si cambias `setAsBox()` sin ajustar el `draw()`?
+4. **Desincroniza los bodies:** Comenta la línea `bodyTop.setLinearVelocity(SPEED, 0)` en `createBodyPipeTop()`. ¿Qué ocurre visualmente? ¿Por qué?
 
-5. **Compara formas:** Cambia el `PolygonShape` de la tubería por un `CircleShape` con radio `0.5f`. ¿Qué forma ves en el debugRenderer? ¿Tiene sentido para una tubería?
+5. **Quita el sensor:** Comenta `this.fixtureCounter.setSensor(true)`. ¿Qué pasa cuando el pájaro intenta pasar por el hueco?
 
-6. **Pregunta para reflexionar:** La tubería usa `KinematicBody` aunque en esta rama no se mueve. ¿Qué pasaría si usaras `StaticBody` ahora y quisieras mover la tubería en la rama siguiente? Pruébalo: cambia el tipo a `StaticBody` y en `act()` intenta `bodyDown.setLinearVelocity(-2f, 0f)`. ¿Se mueve?
+6. **Posición inicial:** Cambia la posición en `GameScreen.show()` de `(3.75f, 0f)` a `(3.75f, 2f)`. ¿Cómo afecta esto a la posición del hueco? Calcula mentalmente: si `bodyDown` está en `y=2`, ¿en qué `y` estará el centro del hueco?
+
+7. **Pregunta para reflexionar:** El `detach()` no destruye el `bodyCounter` ni su fixture. ¿Es esto un problema real? ¿Cuándo se liberaría esa memoria? ¿Cómo lo arreglarías?
