@@ -53,22 +53,30 @@ public class GameScreen extends BaseScreen {
 
     @Override
     public void show() {
-
-
         addBackground();
+        addBird();
+        addPipes();
+    }
+
+    public void addBird(){
+        //Cargamos la animación del pájaro
         Animation<AtlasRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
+        //Creamos la instancia del pajaro pasandole la referencia del mundo, su animación, y su
+        // posición en el mundo físico
+        this.bird = new Bird(this.world,birdSprite, new Vector2(1.35f ,4.75f ));
+        //Añadimos el pajaro a la escena
+        this.stage.addActor(this.bird);
+    }
+
+    public void addPipes(){
         //Cargamos la textura de la tubería inferior
         TextureRegion pipeDownTexture = mainGame.assetManager.getPipeBottom();
 
-        //Añadimos el pajaro a la escena
-        this.bird = new Bird(this.world,birdSprite, new Vector2(1.35f ,4.75f ));
-
-        //Todo 12. Creamos una instancia de Pipes y se lo pasamos al escenario
+        // Todo 12. Creamos una instancia de Pipes
         this.pipes = new Pipes(this.world, pipeDownTexture,new Vector2(3.75f,2f));
-        this.stage.addActor(this.bird);
+
+        // Todo-> y se lo pasamos al escenario
         this.stage.addActor(this.pipes);
-
-
     }
 
     public void addBackground(){
