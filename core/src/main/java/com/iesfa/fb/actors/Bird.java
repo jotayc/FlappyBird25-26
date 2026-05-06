@@ -17,6 +17,13 @@ import com.iesfa.fb.extra.Utils;
 
 public class Bird extends Actor {
 
+    //Todo 1. Creamos diferentes estados del juego y la velocidad de impulso que se le dará al pj
+    private static final int STATE_NORMAL = 0;
+    private static final int STATE_DEAD = 1;
+    private static final float JUMP_SPEED = 5f;
+
+    //Todo 2.Controlamos el estado con un atributo
+    private int state;
 
     private Animation<AtlasRegion> birdAnimation;
     private Vector2 position;
@@ -27,12 +34,11 @@ public class Bird extends Actor {
     private float stateTime;
 
 
-    //Todo 5. Creamos el atributo para el cuerpo del pájaro.
     private Body body;
-    //Todo 6. Creamos el atributo para la forma del pájaro.
+
     private Fixture fixture;
 
-    //Todo 4. Modificamos el constructor para pasarle la instancia del mundo físico.
+
     public Bird(World world, Animation<AtlasRegion> animation, Vector2 position) {
         this.birdAnimation = animation;
         this.position      = position;
@@ -43,7 +49,7 @@ public class Bird extends Actor {
 
     }
 
-    //Todo 7. Creamos un método para crear el cuerpo
+
     public void createBody(){
         //Creamos BodyDef
         BodyDef bodyDef = new BodyDef();
@@ -57,7 +63,7 @@ public class Bird extends Actor {
         this.body = this.world.createBody(bodyDef);
     }
 
-    //Todo 8. Creamos un método para crear la forma
+
     public void createFixture(){
         //Shape
         CircleShape circle = new CircleShape();
@@ -76,7 +82,12 @@ public class Bird extends Actor {
 
     @Override
     public void act(float delta) {
-
+        //Todo 3. Controlamos el toque de la pantalla
+        boolean jump = Gdx.input.justTouched();
+        //Todo 4. Si el estado es normal, se le da un impulso
+        if(jump && this.state == STATE_NORMAL){
+            this.body.setLinearVelocity(0, JUMP_SPEED);
+        }
     }
 
     @Override
@@ -86,10 +97,9 @@ public class Bird extends Actor {
 
         stateTime += Gdx.graphics.getDeltaTime();
 
-
     }
 
-    //Todo 9.Nos creamos un metodo detach que nos ayudará a liberar los recursos de body y fixture
+
     public void detach(){
 
         //(body) destroyFixture

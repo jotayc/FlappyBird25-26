@@ -4,6 +4,7 @@ import static com.iesfa.fb.extra.Utils.WORLD_HEIGTH;
 import static com.iesfa.fb.extra.Utils.WORLD_WIDTH;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -15,31 +16,31 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.iesfa.fb.MainGame;
 import com.iesfa.fb.actors.Bird;
+import com.iesfa.fb.actors.Pipes;
 
 public class GameScreen extends BaseScreen {
 
     private Stage stage;
     private Bird bird;
+    private Pipes pipes;
+
     private Image background;
 
-    //Todo 1.World se encarga de gestionar el mundo físico dentro de nuestro juego
+
     private World world;
 
 
-    //Todo **12** DebugRenderer nos servirá para ver en la pantalla una representación gráfica del mundo físico.
     private Box2DDebugRenderer debugRenderer;
     private OrthographicCamera ortCamera;
 
     public GameScreen(MainGame mainGame){
         super(mainGame);
 
-        //Todo 2.Creamos el mundo recibiendo dos parametros
-        this.world = new World(new Vector2(0,0),true);
+        this.world = new World(new Vector2(0,-10),true);
 
         FitViewport fitViewport = new FitViewport(WORLD_WIDTH,WORLD_HEIGTH);
         this.stage = new Stage(fitViewport);
 
-        // Todo 13. Cargamos la cámara
         this.ortCamera = (OrthographicCamera) this.stage.getCamera();
         this.debugRenderer = new Box2DDebugRenderer();
 
@@ -57,11 +58,16 @@ public class GameScreen extends BaseScreen {
 
         addBackground();
         Animation<AtlasRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
+        //Cargamos la textura de la tubería inferior
+        TextureRegion pipeDownTexture = mainGame.assetManager.getPipeDownTR();
 
-
-        //Todo 11.Hay que pasarle el mundo al constructor de Bird para que este configure su física
+        //Añadimos el pajaro a la escena
         this.bird = new Bird(this.world,birdSprite, new Vector2(1.35f ,4.75f ));
+
+        //Todo 12. Creamos una instancia de Pipes y se lo pasamos al escenario
+        this.pipes = new Pipes(this.world, pipeDownTexture,new Vector2(3.75f,2f));
         this.stage.addActor(this.bird);
+        this.stage.addActor(this.pipes);
 
 
     }
@@ -78,7 +84,6 @@ public class GameScreen extends BaseScreen {
 
         this.stage.getBatch().setProjectionMatrix(ortCamera.combined);
 
-        //Todo 10.Pedimos a draw que actualice la físca de los actores que tiene adscritos
         this.stage.act();
         this.world.step(delta,6,2); //Porqué 6 y 2? Por que así lo dice la documentación.
         this.stage.draw();
@@ -91,13 +96,16 @@ public class GameScreen extends BaseScreen {
 
     @Override
     public void hide() {
-        //Todo 12. Nos acordamos que cuando el usuario no esté jugando (no esté la pantalla activa)
-        //todo -> quitamos los recursos de los actores de memoria
+
 
         //detach
         this.bird.detach();
         //remove
         this.bird.remove();
+
+        //Todo 13. liberamos el objeto pipe
+        this.pipes.detach();
+        this.pipes.remove();
     }
 
     @Override
@@ -106,7 +114,6 @@ public class GameScreen extends BaseScreen {
 
         this.stage.dispose();
 
-        // Todo 3.Nos acordamos de eliminar los recursos de que retiene world
         this.world.dispose();
 
     }
