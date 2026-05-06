@@ -15,8 +15,8 @@ public class Utils {
     //Todo: Identificadores de assets
     public static final String ATLAS_MAP = "FBAtlas";
     public static final String BACKGROUND_IMAGE = "flappy_background";
-    public static final String PIPE_DOWN = "pipeDown";
-    public static final String PIPE_UP = "pipeUp";
+    public static final String PIPE_BOTTOM = "pipeDown";
+    public static final String PIPE_TOP = "pipeUp";
 
 
     //Todo: Identificadores de cuerpos (física)

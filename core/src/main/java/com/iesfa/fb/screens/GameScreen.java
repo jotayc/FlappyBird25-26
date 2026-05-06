@@ -4,7 +4,6 @@ import static com.iesfa.fb.extra.Utils.WORLD_HEIGTH;
 import static com.iesfa.fb.extra.Utils.WORLD_WIDTH;
 
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -59,7 +58,7 @@ public class GameScreen extends BaseScreen {
         addBackground();
         Animation<AtlasRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
         //Cargamos la textura de la tubería inferior
-        TextureRegion pipeDownTexture = mainGame.assetManager.getPipeDownTR();
+        TextureRegion pipeDownTexture = mainGame.assetManager.getPipeBottom();
 
         //Añadimos el pajaro a la escena
         this.bird = new Bird(this.world,birdSprite, new Vector2(1.35f ,4.75f ));

@@ -3,12 +3,10 @@ package com.iesfa.fb.extra;
 import static com.iesfa.fb.extra.Utils.ATLAS_MAP;
 import static com.iesfa.fb.extra.Utils.BACKGROUND_IMAGE;
 
-import static com.iesfa.fb.extra.Utils.PIPE_DOWN;
-import static com.iesfa.fb.extra.Utils.PIPE_UP;
+import static com.iesfa.fb.extra.Utils.PIPE_BOTTOM;
+import static com.iesfa.fb.extra.Utils.PIPE_TOP;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.assets.AssetManager;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.*;
@@ -41,13 +39,15 @@ public class AssetMan {
             textureAtlas.findRegion("bird3"));
     }
 
-    public TextureRegion getPipeDownTR() {
-
-          return this.textureAtlas.findRegion(PIPE_DOWN);
+    public TextureRegion getPipeTop() {
+        return  this.textureAtlas.findRegion(PIPE_TOP);
     }
 
-    public TextureRegion getPipeUpTR() {
-        return  this.textureAtlas.findRegion(PIPE_UP);
+    public TextureRegion getPipeBottom() {
+
+          return this.textureAtlas.findRegion(PIPE_BOTTOM);
     }
+
+
 
 }
