@@ -18,11 +18,11 @@ import com.iesfa.fb.extra.Utils;
 
 public class Bird extends Actor {
 
-    private static final int STATE_NORMAL = 0;
-    private static final int STATE_DEAD = 1;
+    public static final int STATE_NORMAL = 0;
+    public static final int STATE_DEAD = 1;
     private static final float JUMP_SPEED = 5f;
 
-    private int state;
+    public int state;
 
     private Animation<AtlasRegion> birdAnimation;
     private Vector2 position;
@@ -46,6 +46,10 @@ public class Bird extends Actor {
         createBody();
         createFixture();
 
+    }
+
+    public int getState(){
+        return this.state;
     }
 
 
@@ -83,7 +87,7 @@ public class Bird extends Actor {
     public void act(float delta) {
         boolean jump = Gdx.input.justTouched();
         if(jump && this.state == STATE_NORMAL){
-            //Todo 5. Cuando salte, reproducimos el sonido
+
             this.jumpSound.play();
             this.body.setLinearVelocity(0, JUMP_SPEED);
         }

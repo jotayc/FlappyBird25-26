@@ -18,9 +18,12 @@ public class Utils {
     public static final String PIPE_BOTTOM = "pipeDown";
     public static final String PIPE_TOP = "pipeUp";
 
-    //Todo 1. Creamos identificador para los sonidos
     public static final String SOUND_JUMP = "jump.mp3";
     public static final String MUSIC_BG = "musicbg.mp3";
+
+    //Creamos los identificadores de las fuentes
+    public static final String FONT_FNT     = "FBFont.fnt";
+    public static final String FONT_PNG     = "FBFont.png";
 
     //Todo: Identificadores de cuerpos (física)
     //Identificadores de cuerpos
