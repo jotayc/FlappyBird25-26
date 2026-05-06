@@ -1,6 +1,7 @@
 package com.iesfa.fb.actors;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
@@ -26,21 +27,21 @@ public class Bird extends Actor {
     private Animation<AtlasRegion> birdAnimation;
     private Vector2 position;
 
-
     private World world;
-
     private float stateTime;
 
-
     private Body body;
-
     private Fixture fixture;
 
+    //Todo 3. Creamos sonido para el objeto bird.
+    private Sound jumpSound;
 
-    public Bird(World world, Animation<AtlasRegion> animation, Vector2 position) {
+    //Todo 4. Modificar el constructor para añadir el recurso del sonido.
+    public Bird(World world, Animation<AtlasRegion> animation,Sound sound, Vector2 position) {
         this.birdAnimation = animation;
         this.position      = position;
         this.world         = world;
+        this.jumpSound     = sound;
         stateTime = 0f;
         createBody();
         createFixture();
@@ -82,6 +83,8 @@ public class Bird extends Actor {
     public void act(float delta) {
         boolean jump = Gdx.input.justTouched();
         if(jump && this.state == STATE_NORMAL){
+            //Todo 5. Cuando salte, reproducimos el sonido
+            this.jumpSound.play();
             this.body.setLinearVelocity(0, JUMP_SPEED);
         }
     }

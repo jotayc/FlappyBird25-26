@@ -1,353 +1,203 @@
-# 🐦 Construyendo Flappy Bird — Rama `5.PipeTop&Counter`
-## La tubería se completa y las tuberías se mueven
+# 🐦 Construyendo Flappy Bird — Rama `6.Sounds`
+## El juego cobra vida con audio y límites del mundo
 
-> *En la rama anterior colocamos una tubería inferior estática. Pero Flappy Bird necesita pares de tuberías — una abajo y otra arriba — con un hueco entre ellas para que el pájaro pase. Además, las tuberías deben moverse hacia la izquierda, y necesitamos un sensor invisible para detectar cuándo el pájaro cruza el hueco. Esta rama transforma un obstáculo aislado en la mecánica central del juego.*
+> *Un juego sin sonido es como una película muda: funciona, pero le falta algo esencial. En esta rama añadimos música de fondo, un efecto de sonido para el salto, y de paso completamos los límites físicos del mundo con un suelo sólido y un techo. El juego empieza a sentirse como un juego de verdad.*
 
 ---
 
 ## ¿Qué cambia en esta rama?
 
-La rama 4 dejó una sola tubería inferior, quieta, sin compañera. En esta rama damos tres pasos grandes:
+La rama 5 dejó las tuberías moviéndose con un sensor, pero el mundo no tenía límites físicos y el juego era silencioso. Esta rama añade cuatro cosas:
 
-1. **Tubería superior**: un segundo body y textura colocados encima del hueco.
-2. **Movimiento**: los tres cuerpos se desplazan hacia la izquierda a velocidad constante.
-3. **Sensor contador**: un cuerpo invisible entre las dos tuberías que servirá para detectar cuándo el pájaro cruza el hueco y sumar puntos.
-
-Al terminar esta rama, tendrás el par completo de tuberías moviéndose por la pantalla — el obstáculo fundamental de Flappy Bird.
-
----
-
-## Paso 1 — Entender la estructura completa de un par de tuberías
-
-### La anatomía del obstáculo
-
-Cada par de tuberías es un único `Actor` (`Pipes`) que gestiona internamente **tres cuerpos Box2D**:
-
-```
-  ┌──────────┐
-  │          │  ← bodyTop (KinematicBody)
-  │ pipeTop  │     Textura: pipeUp del atlas
-  │          │     
-  └──────────┘
-                ← COUNTER_HEIGHT (2 unidades de hueco)
-   [counter]    ← bodyCounter (KinematicBody + sensor)
-                   No se dibuja, solo detecta al pájaro
-  ┌──────────┐
-  │          │
-  │ pipeDown │  ← bodyDown (KinematicBody)
-  │          │     Textura: pipeDown del atlas
-  └──────────┘
-```
-
-¿Por qué tres cuerpos y no uno solo con una forma en "U"? Porque Box2D no permite formas cóncavas (con entrantes). Una "U" tendría un hueco interior, que es exactamente una forma cóncava. La solución es usar dos rectángulos independientes (las tuberías) y un tercer cuerpo separado para el sensor.
-
-### Analogía: una puerta automática
-
-Piensa en las puertas automáticas de un centro comercial. Hay dos elementos físicos (los dos paneles de cristal) y un sensor de movimiento invisible entre ellos. Cuando pasas, el sensor te detecta pero no te bloquea — no puedes atravesar los cristales, pero el sensor no ofrece resistencia. Es exactamente lo que construimos: dos tuberías sólidas y un sensor invisible en el hueco.
+1. **Sonido de salto**: un efecto `Sound` que suena cada vez que el pájaro salta.
+2. **Música de fondo**: un `Music` que se reproduce en bucle durante la partida.
+3. **Suelo y techo**: cuerpos estáticos que impiden que el pájaro salga de la pantalla.
+4. **Ajuste de `JUMP_SPEED`**: la velocidad del salto se reduce de `50f` a `5f`, un cambio drástico que afecta a toda la jugabilidad.
 
 ---
 
-## Paso 2 — Nuevas constantes y atributos
+## Paso 1 — `Sound` vs `Music`: dos formas de reproducir audio
 
-### Constantes añadidas en `Pipes`
+### La diferencia fundamental
 
-```java
-private static final float COUNTER_HEIGHT = 2f;  // altura del hueco entre tuberías
-private static final float SPEED = -0.2f;         // velocidad horizontal (negativa = izquierda)
-```
+LibGDX distingue entre dos tipos de audio que se usan para propósitos distintos:
 
-`COUNTER_HEIGHT` define la distancia entre la parte superior de `bodyDown` y la parte inferior de `bodyTop`. Es el espacio por el que el pájaro debe pasar. Un valor de `2f` unidades del mundo es suficiente para que quepa el pájaro (cuyo radio es `0.30f`), pero exige precisión.
+| Característica | `Sound` | `Music` |
+|---------------|---------|---------|
+| Se carga en... | Memoria RAM (completo) | Se lee del disco (streaming) |
+| Ideal para... | Efectos cortos (<10 segundos) | Pistas largas, música de fondo |
+| Latencia | Muy baja (inmediato) | Mayor (necesita buffering) |
+| Memoria | Ocupa RAM proporcional al tamaño | Casi nada en RAM |
+| Instancias simultáneas | Múltiples a la vez | Una por archivo |
 
-`SPEED` es la velocidad horizontal de las tuberías. El valor `-0.2f` las mueve lentamente hacia la izquierda. En ramas posteriores ajustaremos este valor para encontrar la dificultad adecuada.
+### Analogía: disco de vinilo vs Spotify
 
-### Nuevos atributos
+Un `Sound` es como tener un disco de vinilo en casa: lo cargas una vez en el tocadiscos (memoria) y puedes reproducirlo al instante cuantas veces quieras. Es rápido pero ocupa espacio físico. Un `Music` es como Spotify: no almacena la canción entera, la va descargando poco a poco (streaming desde disco), así que no ocupa casi memoria, pero tarda un instante en empezar.
 
-En la rama 4, `Pipes` solo tenía un body y una fixture. Ahora tiene tres de cada uno:
-
-```java
-// Texturas
-private TextureRegion pipeDownTR;
-private TextureRegion pipeTopTR;       // ← NUEVO
-
-// Bodies
-private Body bodyDown;
-private Body bodyTop;                  // ← NUEVO
-private Body bodyCounter;              // ← NUEVO
-
-// Fixtures
-private Fixture fixtureDown;
-private Fixture fixtureTop;            // ← NUEVO
-private Fixture fixtureCounter;        // ← NUEVO
-```
+Para el salto necesitamos latencia cero — el sonido debe sonar en el frame exacto del toque. Por eso usamos `Sound`. Para la música de fondo, que suena continuamente y es un archivo largo, usamos `Music`.
 
 ---
 
-## Paso 3 — El constructor actualizado
+## Paso 2 — Cargar audio con `AssetManager`
 
-El constructor ahora recibe **dos texturas** en lugar de una:
+### Registrar los recursos
+
+En el constructor de `AssetMan`, se registran los dos archivos de audio para que el `AssetManager` los cargue:
 
 ```java
-public Pipes(World world, TextureRegion trpDown, TextureRegion trpTop, Vector2 position) {
+public AssetMan() {
+    this.assetManager = new AssetManager();
+
+    assetManager.load(ATLAS_MAP, TextureAtlas.class);
+    assetManager.load(SOUND_JUMP, Sound.class);    // ← NUEVO
+    assetManager.load(MUSIC_BG, Music.class);      // ← NUEVO
+    assetManager.finishLoading();
+
+    this.textureAtlas = assetManager.get(ATLAS_MAP);
+}
+```
+
+Fíjate en que los tres `load()` se llaman **antes** de `finishLoading()`. El `AssetManager` los encola todos y los carga en un solo paso. Si pusieras un `finishLoading()` después de cada `load()`, funcionaría pero sería menos eficiente — estarías forzando tres cargas secuenciales en lugar de una batch.
+
+### ¿Dónde deben estar los archivos?
+
+Los archivos de audio deben estar en la carpeta `android/assets/`, al mismo nivel que el atlas:
+
+```
+android/assets/
+├── FBAtlas.png
+├── FBAtlas.atlas
+├── jump.mp3          ← efecto de salto
+└── musicbg.mp3       ← música de fondo
+```
+
+LibGDX busca los recursos en esta carpeta por defecto, tanto en la versión Android como en la de escritorio.
+
+### Métodos de acceso
+
+```java
+public Sound getJumpSound() {
+    return this.assetManager.get(SOUND_JUMP);
+}
+
+public Music getMusicBG() {
+    return this.assetManager.get(MUSIC_BG);
+}
+```
+
+El `AssetManager` usa genéricos internamente: `assetManager.get(SOUND_JUMP)` devuelve un `Sound` porque fue registrado con `Sound.class`. Si intentaras hacer `assetManager.get(SOUND_JUMP, Music.class)`, lanzaría una excepción porque el tipo no coincide.
+
+### Nuevas constantes en `Utils`
+
+```java
+public static final String SOUND_JUMP = "jump.mp3";
+public static final String MUSIC_BG = "musicbg.mp3";
+```
+
+Seguimos el mismo patrón que con las texturas: los nombres de archivo como constantes en `Utils` para evitar strings dispersos por el código.
+
+---
+
+## Paso 3 — El sonido del salto en `Bird`
+
+### Recibir el `Sound` por constructor
+
+El sonido de salto se pasa al pájaro como parámetro del constructor. El pájaro no debería saber *de dónde* viene el sonido — eso es responsabilidad de `GameScreen`:
+
+```java
+private Sound jumpSound;
+
+public Bird(World world, Animation<TextureRegion> animation, Sound sound, Vector2 position) {
+    this.birdAnimation = animation;
+    this.position = position;
     this.world = world;
-    this.pipeDownTR = trpDown;
-    this.pipeTopTR = trpTop;
+    this.stateTime = 0f;
+    this.state = STATE_NORMAL;
+    this.jumpSound = sound;       // ← NUEVO
 
-    createBodyPipeDown(position);
-    createBodyPipeTop();
-    createCounter();
+    createBody();
     createFixture();
 }
 ```
 
-El orden de creación es importante:
-1. **Primero `bodyDown`**: porque es el que recibe la posición como parámetro. Los demás se posicionan relativamente a él.
-2. **Después `bodyTop`**: se posiciona a partir de la posición de `bodyDown`.
-3. **Después `bodyCounter`**: se posiciona entre los dos anteriores.
-4. **Por último `createFixture()`**: necesita que ambos bodies existan para asignarles sus formas.
+### Reproducir al saltar
 
-Si alteraras este orden — por ejemplo, creando `bodyTop` antes de `bodyDown` — obtendrías un `NullPointerException` porque `createBodyPipeTop()` accede a `bodyDown.getPosition()`.
-
----
-
-## Paso 4 — Posicionar la tubería superior relativamente
-
-### El cálculo de posición
-
-La posición de `bodyTop` se calcula a partir de `bodyDown`:
-
-```java
-private void createBodyPipeTop() {
-    BodyDef def = new BodyDef();
-    def.position.x = bodyDown.getPosition().x;
-    def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT + COUNTER_HEIGHT;
-
-    def.type = BodyDef.BodyType.KinematicBody;
-    bodyTop = world.createBody(def);
-    bodyTop.setUserData(Utils.USER_PIPE_UP);
-    bodyTop.setLinearVelocity(SPEED, 0);
-}
-```
-
-La línea clave es el cálculo de `def.position.y`. Recuerda que `bodyDown.getPosition()` devuelve el **centro** del body inferior. Para llegar al centro del body superior, necesitamos sumar:
-
-```
-Centro bodyDown:    bodyDown.getPosition().y
-                         │
-                    ┌─────┴─────┐
-                    │  bodyDown │  ← mitad superior = PIPE_HEIGHT/2
-                    └───────────┘
-                         ↑ PIPE_HEIGHT/2
-                         
-                    (hueco)        ← COUNTER_HEIGHT completo
-                         
-                         ↑ PIPE_HEIGHT/2
-                    ┌───────────┐
-                    │  bodyTop  │  ← mitad inferior = PIPE_HEIGHT/2
-                    └─────┬─────┘
-                         │
-Centro bodyTop:     bodyDown.y + PIPE_HEIGHT + COUNTER_HEIGHT
-```
-
-Pero espera: ¿no deberían ser `PIPE_HEIGHT/2 + COUNTER_HEIGHT + PIPE_HEIGHT/2`? Sí, y eso simplifica exactamente a `PIPE_HEIGHT + COUNTER_HEIGHT`. Las dos mitades de `PIPE_HEIGHT` (la mitad superior de bodyDown y la mitad inferior de bodyTop) se suman en un `PIPE_HEIGHT` completo.
-
-### ¿Por qué posicionamiento relativo?
-
-Usar la posición del bodyDown como referencia tiene una ventaja: si cambias la posición del par de tuberías en `GameScreen`, solo tocas un parámetro. La tubería superior y el sensor se recalculan automáticamente.
-
----
-
-## Paso 5 — El movimiento: velocidad en los tres cuerpos
-
-### `setLinearVelocity()` en `KinematicBody`
-
-Hasta ahora las tuberías estaban quietas. Esta rama añade movimiento horizontal con una sola línea por body:
-
-```java
-bodyDown.setLinearVelocity(SPEED, 0);     // en createBodyPipeDown()
-bodyTop.setLinearVelocity(SPEED, 0);      // en createBodyPipeTop()
-bodyCounter.setLinearVelocity(SPEED, 0);  // en createCounter()
-```
-
-Recordemos de la rama 3 que un `KinematicBody` no se ve afectado por la gravedad ni por fuerzas externas. Su velocidad solo cambia si tú la cambias explícitamente. Al establecer `SPEED = -0.2f`, los tres cuerpos se moverán 0.2 unidades por segundo hacia la izquierda, indefinidamente.
-
-### ¿Por qué la misma velocidad en los tres?
-
-Si un body se moviera más rápido que otro, el par de tuberías se "desalinearía" — la tubería superior se separaría de la inferior. Los tres deben moverse siempre juntos, como si fueran una única pieza rígida.
-
-> ⚠️ **Error típico:** Olvidar poner `setLinearVelocity()` en uno de los tres bodies. El resultado es que dos tuberías se mueven y una se queda quieta — un bug visual muy evidente pero cuya causa no siempre es obvia.
-
-### ¿Por qué no mover el Actor en vez de los bodies?
-
-Podrías pensar: "¿por qué no mover el `Actor` con `setPosition()` en `act()` y sincronizar los bodies?". La respuesta tiene que ver con las colisiones. Box2D detecta colisiones entre **bodies**, no entre actores. Si mueves el actor pero no el body, el pájaro no chocará con la tubería aunque visualmente estén en la misma posición. El body es la "verdad física"; el actor es solo la representación visual.
-
----
-
-## Paso 6 — El sensor contador: colisión sin contacto
-
-### ¿Qué es un sensor?
-
-Un sensor en Box2D es una fixture que **detecta solapamiento** pero **no produce respuesta física**. El pájaro puede atravesarlo sin rebotar, pero Box2D notifica que ha ocurrido un contacto. Es perfecto para detectar cuándo el pájaro cruza el hueco entre las tuberías.
-
-### Analogía: una célula fotoeléctrica
-
-Piensa en los sensores de las puertas de ascensor: un haz de luz invisible cruza la puerta. Cuando algo lo interrumpe, el sensor lo detecta, pero el haz no bloquea físicamente el paso. Nuestro `bodyCounter` funciona igual: ocupa un espacio entre las tuberías, y cuando el pájaro lo cruza, Box2D lo registra como un contacto, pero el pájaro pasa sin obstáculo.
-
-### Implementación del sensor
-
-```java
-public void createCounter() {
-    BodyDef bodyDef = new BodyDef();
-    bodyDef.position.x = this.bodyDown.getPosition().x;
-    bodyDef.position.y = (this.bodyDown.getPosition().y + this.bodyTop.getPosition().y) / 2f;
-    bodyDef.type = BodyDef.BodyType.KinematicBody;
-
-    this.bodyCounter = this.world.createBody(bodyDef);
-    this.bodyCounter.setLinearVelocity(SPEED, 0);
-
-    PolygonShape polygonShape = new PolygonShape();
-    polygonShape.setAsBox(0.1f, 0.90f);
-
-    this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
-    this.fixtureCounter.setSensor(true);        // ← esto lo convierte en sensor
-    this.fixtureCounter.setUserData(Utils.USER_COUNTER);
-    polygonShape.dispose();
-}
-```
-
-Analicemos cada parte:
-
-**Posición vertical**: `(bodyDown.y + bodyTop.y) / 2f` — el punto medio entre los centros de ambos bodies. Esto coloca el sensor exactamente en el centro del hueco.
-
-**Forma estrecha**: `setAsBox(0.1f, 0.90f)` crea un rectángulo muy estrecho (0.2 de ancho total) y relativamente alto (1.8 de alto total). Es estrecho para que el pájaro lo cruce en pocos frames, evitando detecciones dobles. Si fuera ancho, el pájaro podría estar "dentro" del sensor durante varios frames y contar puntos múltiples veces.
-
-**`setSensor(true)`**: esta es la línea crucial. Sin ella, el body sería sólido y bloquearía al pájaro en el hueco. Con `setSensor(true)`, la fixture deja de producir respuestas físicas pero sigue generando eventos de contacto que podremos escuchar con un `ContactListener` en ramas futuras.
-
-**`userData` en la fixture**: igual que en Bird, el identificador `USER_COUNTER` se asigna a la fixture, no al body. Esto nos permitirá distinguir en el `ContactListener` si el pájaro ha tocado una tubería (muerte) o el sensor (punto).
-
-### Diferencia clave: `userData` en body vs fixture
-
-Observa que en esta clase se mezclan ambos enfoques:
-
-```java
-// userData en el BODY:
-bodyDown.setUserData(Utils.USER_PIPE_DOWN);
-bodyTop.setUserData(Utils.USER_PIPE_UP);
-
-// userData en la FIXTURE:
-this.fixtureCounter.setUserData(Utils.USER_COUNTER);
-```
-
-Ambos funcionan. Cuando implementemos el `ContactListener`, necesitaremos comprobar tanto `body.getUserData()` como `fixture.getUserData()` dependiendo de qué cuerpo estemos inspeccionando.
-
----
-
-## Paso 7 — Reutilizar la `PolygonShape` para ambas tuberías
-
-### Optimización sutil en `createFixture()`
-
-```java
-private void createFixture() {
-    PolygonShape shape = new PolygonShape();
-    shape.setAsBox(PIPE_WIDTH / 2, PIPE_HEIGHT / 2);
-
-    this.fixtureDown = bodyDown.createFixture(shape, 8);
-    this.fixtureTop = bodyTop.createFixture(shape, 8);
-
-    shape.dispose();
-}
-```
-
-Fíjate en que se crea **una sola** `PolygonShape` y se usa para las dos fixtures. Esto es posible porque ambas tuberías tienen exactamente las mismas dimensiones (`PIPE_WIDTH × PIPE_HEIGHT`). Cuando llamas a `createFixture()`, Box2D **copia** los datos de la shape internamente, así que puedes reutilizar el mismo objeto shape y hacer `dispose()` una sola vez al final.
-
-Es el mismo principio de la rama 3: `shape.dispose()` libera la memoria nativa, y no afecta a las fixtures ya creadas porque Box2D ya copió lo que necesitaba.
-
-### ¿Por qué el sensor tiene su propia shape?
-
-El sensor usa dimensiones diferentes (`0.1f × 0.90f`) y se crea en un método separado (`createCounter()`). No comparte shape con las tuberías.
-
----
-
-## Paso 8 — Dibujar ambas tuberías
-
-### El `draw()` actualizado
+En `act()`, el sonido se reproduce **justo antes** de aplicar la velocidad:
 
 ```java
 @Override
-public void draw(Batch batch, float parentAlpha) {
-    setPosition(
-        this.bodyDown.getPosition().x - (PIPE_WIDTH / 2),
-        this.bodyDown.getPosition().y - (PIPE_HEIGHT / 2)
-    );
-    batch.draw(this.pipeDownTR, getX(), getY(), PIPE_WIDTH, PIPE_HEIGHT);
+public void act(float delta) {
+    boolean jump = Gdx.input.justTouched();
 
-    setPosition(
-        this.bodyTop.getPosition().x - (PIPE_WIDTH / 2),
-        this.bodyTop.getPosition().y - (PIPE_HEIGHT / 2)
-    );
-    batch.draw(this.pipeTopTR, getX(), getY(), PIPE_WIDTH, PIPE_HEIGHT);
+    if (jump && this.state == STATE_NORMAL) {
+        this.jumpSound.play();                      // ← NUEVO
+        this.body.setLinearVelocity(0, JUMP_SPEED);
+    }
 }
 ```
 
-Se dibuja primero la tubería inferior y después la superior. Para cada una:
-1. Se sincroniza `setPosition()` con la posición del body correspondiente (restando la mitad para ir del centro a la esquina inferior izquierda).
-2. Se dibuja con `batch.draw()` usando la textura correspondiente.
+`sound.play()` es no bloqueante: dispara la reproducción y continúa inmediatamente. No detiene el juego mientras suena. Puedes llamarlo múltiples veces seguidas y cada llamada creará una **nueva instancia** del sonido, así que si el jugador toca muy rápido, se oirán varios sonidos superpuestos.
 
-**Detalle importante:** se llama a `setPosition()` dos veces. Esto significa que la posición final del Actor (la que usaría `getX()`/`getY()` fuera de `draw()`) será la de la tubería superior. Esto no causa problemas porque no usamos la posición del Actor para nada más — todo se calcula desde los bodies.
+### El cambio silencioso: `JUMP_SPEED` baja de `50f` a `5f`
 
-### ¿Y el sensor? ¿No se dibuja?
+```java
+private static final float JUMP_SPEED = 5f;  // Antes era 50f
+```
 
-No. El sensor es **invisible**. No tiene textura asociada ni debe tenerla — es un concepto puramente físico. Solo lo verás con el `Box2DDebugRenderer` activado: aparecerá como un rectángulo estrecho entre las dos tuberías.
+Este cambio no tiene relación directa con el audio, pero ocurre en esta rama. La velocidad del salto se reduce **diez veces**. ¿Por qué? Con `50f`, el pájaro salía disparado fuera de la pantalla. Con `5f` y la gravedad a `-10`, el salto produce un arco pequeño y controlable, mucho más parecido al Flappy Bird original.
+
+La relación entre gravedad y velocidad de salto determina la "sensación" del juego:
+
+```
+Gravedad = -10,  JUMP_SPEED = 50  →  Salto exagerado, difícil de controlar
+Gravedad = -10,  JUMP_SPEED = 5   →  Salto corto, control preciso ✓
+Gravedad = -10,  JUMP_SPEED = 2   →  Salto mínimo, demasiado difícil
+```
 
 ---
 
-## Paso 9 — Liberar recursos: el `detach()` ampliado
+## Paso 4 — La música de fondo en `GameScreen`
+
+### Obtener y almacenar la referencia
+
+La música se obtiene en el constructor de `GameScreen`:
 
 ```java
-public void detach() {
-    bodyDown.destroyFixture(fixtureDown);
-    world.destroyBody(bodyDown);
+private Music musicbg;
 
-    this.bodyTop.destroyFixture(fixtureTop);
-    this.world.destroyBody(this.bodyTop);
+public GameScreen(MainGame mainGame) {
+    super(mainGame);
+
+    this.world = new World(new Vector2(0, -10), true);
+    FitViewport fitViewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT);
+    this.stage = new Stage(fitViewport);
+
+    this.musicbg = this.mainGame.assetManager.getMusicBG();  // ← NUEVO
+    this.ortCamera = (OrthographicCamera) this.stage.getCamera();
+    this.debugRenderer = new Box2DDebugRenderer();
 }
 ```
 
-Se destruyen las fixtures y bodies de ambas tuberías. Observa que **no se destruye `bodyCounter`**. Esto podría considerarse un olvido, pero en la práctica, cuando destruyes el `World` completo al hacer `dispose()` de `GameScreen`, se destruyen automáticamente todos los bodies restantes.
-
-> ⚠️ **Nota para el alumno:** En un juego completo, sería buena práctica destruir también el `bodyCounter` y su fixture en `detach()` para no dejar recursos sueltos. Podrías añadirlo como ejercicio.
-
----
-
-## Paso 10 — Cambios en `GameScreen` y `AssetMan`
-
-### Cargar la textura de la tubería superior
-
-En `AssetMan` se añade un nuevo método:
-
-```java
-public TextureRegion getPipeTopTR() {
-    return this.textureAtlas.findRegion(PIPE_UP);
-}
-```
-
-### `show()` actualizado
+### Iniciar con loop en `show()`
 
 ```java
 @Override
 public void show() {
     addBackground();
+    addFloor();
+    addRoof();
     addBird();
 
-    TextureRegion pipeTRDown = mainGame.assetManager.getPipeDownTR();
-    TextureRegion pipeTRTop = mainGame.assetManager.getPipeTopTR();
-    this.pipes = new Pipes(this.world, pipeTRDown, pipeTRTop, new Vector2(3.75f, 0f));
-    this.stage.addActor(this.pipes);
+    // ... creación de tuberías ...
+
+    this.musicbg.setLooping(true);   // ← NUEVO: repetir indefinidamente
+    this.musicbg.play();             // ← NUEVO: comenzar reproducción
 }
 ```
 
-Fíjate en que la posición ha cambiado de `(3.75f, 2f)` en la rama 4 a `(3.75f, 0f)`. Este `0f` es la posición vertical del **centro** de la tubería inferior. Como `PIPE_HEIGHT = 4f`, la mitad inferior del body (`4/2 = 2 unidades`) queda por debajo de `y=0`, es decir, fuera de la pantalla visible. La tubería inferior asoma parcialmente por el borde inferior de la pantalla.
+`setLooping(true)` hace que la pista se reinicie automáticamente al terminar. Sin esta línea, la música sonaría una sola vez y se detendría. En un juego como Flappy Bird, donde las partidas pueden durar más que la pista musical, el loop es esencial.
 
-### `hide()` ahora limpia las tuberías
+### Detener en `hide()`
 
 ```java
 @Override
@@ -355,62 +205,195 @@ public void hide() {
     this.bird.detach();
     this.bird.remove();
 
-    this.pipes.detach();    // ← NUEVO: destruir bodies de tuberías
-    this.pipes.remove();    // ← NUEVO: quitar del Stage
+    this.pipes.detach();
+    this.pipes.remove();
+
+    this.musicbg.stop();   // ← NUEVO: detener la música al salir
 }
 ```
 
-En la rama 4, `hide()` solo limpiaba el pájaro. Ahora también limpia las tuberías. Si no hiciéramos esto, los bodies de las tuberías seguirían existiendo en el `World` después de cambiar de pantalla.
+Si no detienes la música en `hide()`, seguiría sonando incluso después de cambiar a otra pantalla (por ejemplo, `GameOverScreen`). Cada pantalla es responsable de gestionar su propia música.
 
-### Nuevas constantes en `Utils`
+### `play()` vs `stop()` vs `pause()`
+
+| Método | Efecto |
+|--------|--------|
+| `play()` | Inicia reproducción desde el principio (o reanuda si estaba en pausa) |
+| `pause()` | Pausa la reproducción, mantiene la posición actual |
+| `stop()` | Detiene la reproducción, vuelve al principio |
+
+Si usaras `pause()` en lugar de `stop()`, al volver a `show()` y llamar `play()`, la música continuaría desde donde se quedó en vez de empezar de nuevo. Para este juego usamos `stop()` porque cada partida debe empezar con la música desde el inicio.
+
+---
+
+## Paso 5 — El suelo: de `EdgeShape` a `PolygonShape`
+
+### Un suelo con volumen
+
+En la rama 3, el suelo era una línea invisible (`EdgeShape`). Esta rama cambia a un `PolygonShape` con posición y tamaño definidos:
 
 ```java
-// Identificador de cuerpos — NUEVO en esta rama:
-public static final String USER_PIPE_UP = "pipeUp";
-public static final String USER_COUNTER = "counter";
+private void addFloor() {
+    BodyDef bodyDef = new BodyDef();
+    bodyDef.position.set(WORLD_WIDTH / 2f, 0.6f);
+    bodyDef.type = BodyDef.BodyType.StaticBody;
+    Body body = world.createBody(bodyDef);
+    body.setUserData(USER_FLOOR);
+
+    PolygonShape edge = new PolygonShape();
+    edge.setAsBox(2.3f, 0.5f);
+    body.createFixture(edge, 3);
+    edge.dispose();
+}
 ```
 
-Ahora tenemos cuatro tipos de cuerpo identificados: `USER_BIRD`, `USER_PIPE_DOWN`, `USER_PIPE_UP` y `USER_COUNTER`. Estos identificadores serán fundamentales cuando implementemos el `ContactListener` para distinguir qué ha chocado con qué.
+Analicemos las dimensiones:
+
+**Posición del centro**: `(WORLD_WIDTH / 2f, 0.6f)` = `(2.4, 0.6)`. El suelo está centrado horizontalmente y ligeramente elevado respecto al borde inferior de la pantalla.
+
+**Tamaño**: `setAsBox(2.3f, 0.5f)` crea un rectángulo de `4.6 × 1.0` unidades (recuerda: `setAsBox` recibe mitades). Esto cubre casi todo el ancho del mundo (`WORLD_WIDTH = 4.8`), dejando un margen mínimo a los lados.
+
+```
+WORLD_WIDTH = 4.8
+                    
+  ┌──────────────────────────────────────┐  y = 1.1 (0.6 + 0.5)
+  │           SUELO (4.6 × 1.0)         │
+  │         centro en (2.4, 0.6)        │
+  └──────────────────────────────────────┘  y = 0.1 (0.6 - 0.5)
+  ↑ 0.1                              4.7 ↑
+```
+
+### ¿Por qué un rectángulo y no una línea?
+
+Un `EdgeShape` es infinitamente fino — es una línea sin grosor. Un `PolygonShape` tiene volumen real, lo que produce colisiones más predecibles. Cuando el pájaro cae sobre un rectángulo sólido, la respuesta física es más estable que cuando cae sobre una línea infinitamente fina.
+
+Además, el suelo con volumen permite que su borde superior esté ligeramente por encima de `y=0`, lo que da la impresión visual de que el pájaro aterriza "sobre" algo en lugar de quedarse en el borde exacto de la pantalla.
+
+### La constante `USER_FLOOR`
+
+Se añade en `Utils`:
+
+```java
+public static final String USER_FLOOR = "floor";
+```
+
+Esto permitirá identificar el suelo en el `ContactListener` de ramas futuras. Si el pájaro toca el suelo, es game over.
+
+---
+
+## Paso 6 — El techo con `EdgeShape`
+
+A diferencia del suelo, el techo sigue siendo una línea simple:
+
+```java
+public void addRoof() {
+    BodyDef bodyDef = new BodyDef();
+    bodyDef.type = BodyDef.BodyType.StaticBody;
+    Body body = world.createBody(bodyDef);
+
+    EdgeShape edge = new EdgeShape();
+    edge.set(0, WORLD_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT);
+    body.createFixture(edge, 1);
+    edge.dispose();
+}
+```
+
+El techo es una línea horizontal que va de `(0, 8)` a `(4.8, 8)` — el borde superior del mundo. A diferencia del suelo, el techo no necesita volumen: solo impide que el pájaro salga por arriba.
+
+Observa que el techo **no tiene `userData`**. Esto significa que si el pájaro toca el techo, el `ContactListener` no podrá identificar ese cuerpo por su userData. En esta implementación, chocar con el techo no causa game over — simplemente rebota o se detiene.
+
+---
+
+## Paso 7 — El orden en `show()` y la creación del Bird
+
+### `addBird()` actualizado
+
+El pájaro ahora recibe el sonido de salto como parámetro adicional:
+
+```java
+public void addBird() {
+    Animation<TextureRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
+    Sound sound = mainGame.assetManager.getJumpSound();
+    this.bird = new Bird(this.world, birdSprite, sound, new Vector2(1f, 4f));
+    this.stage.addActor(this.bird);
+}
+```
+
+### El orden de `show()`
+
+```java
+@Override
+public void show() {
+    addBackground();    // 1. Fondo (capa más profunda)
+    addFloor();         // 2. Suelo físico (sin visual propia)
+    addRoof();          // 3. Techo físico (sin visual propia)
+    addBird();          // 4. Pájaro (visible)
+
+    // 5. Tuberías (visible)
+    TextureRegion pipeTRDown = mainGame.assetManager.getPipeDownTR();
+    TextureRegion pipeTRTop = mainGame.assetManager.getPipeTopTR();
+    this.pipes = new Pipes(this.world, pipeTRDown, pipeTRTop, new Vector2(3.75f, 0f));
+    this.stage.addActor(this.pipes);
+
+    // 6. Música
+    this.musicbg.setLooping(true);
+    this.musicbg.play();
+}
+```
+
+`addFloor()` y `addRoof()` crean bodies en el mundo pero no actores en el Stage — son puramente físicos, sin representación visual. Solo los verás con el `Box2DDebugRenderer` activado.
+
+---
+
+## Paso 8 — Detalle: el typo `SCREEN_HEIGTH`
+
+En esta rama, `Utils` introduce un typo que se mantiene en el proyecto:
+
+```java
+public static final int SCREEN_HEIGTH = 800;   // ← "HEIGTH" en vez de "HEIGHT"
+```
+
+Y en `DesktopLauncher`:
+
+```java
+config.setWindowedMode(Utils.SCREEN_WIDTH, Utils.SCREEN_HEIGTH);
+```
+
+Fíjate en que `WORLD_HEIGHT` sigue bien escrito pero `SCREEN_HEIGTH` tiene el error. Este tipo de inconsistencias son comunes en proyectos reales. Lo importante es ser consistente: si usas el nombre con typo en un sitio, debes usarlo igual en todos los demás, o renombrarlo con el refactoring del IDE.
 
 ---
 
 ## Errores comunes en esta rama
 
-### 1. "La tubería superior aparece pegada a la inferior"
+### 1. "No se oye el sonido de salto"
+
+Comprueba que:
+- El archivo `jump.mp3` existe en `android/assets/`.
+- El nombre en `Utils.SOUND_JUMP` coincide exactamente con el nombre del archivo (case-sensitive).
+- Has añadido `assetManager.load(SOUND_JUMP, Sound.class)` **antes** de `finishLoading()`.
+
+### 2. "La música no se repite"
 
 ```java
-// ❌ MAL: olvidar sumar COUNTER_HEIGHT
-def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT;
+// ❌ MAL: olvidar setLooping
+this.musicbg.play();
 
-// ✓ BIEN: incluir el hueco
-def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT + COUNTER_HEIGHT;
+// ✓ BIEN: activar loop antes de play
+this.musicbg.setLooping(true);
+this.musicbg.play();
 ```
 
-Sin `COUNTER_HEIGHT`, las dos tuberías quedan pegadas sin hueco entre ellas.
+### 3. "La música sigue sonando en la pantalla de Game Over"
 
-### 2. "El pájaro choca con algo invisible en el hueco"
+Asegúrate de que `hide()` incluye `this.musicbg.stop()`. Sin esto, la música continúa al cambiar de pantalla.
 
-```java
-// ❌ MAL: olvidar setSensor(true)
-this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
-// Sin setSensor → el counter es sólido y bloquea al pájaro
+### 4. "El pájaro apenas salta"
 
-// ✓ BIEN: marcar como sensor
-this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
-this.fixtureCounter.setSensor(true);
-```
+`JUMP_SPEED` bajó de `50f` a `5f`. Si el salto parece demasiado débil, asegúrate de que la gravedad del mundo es `-10` y no un valor más alto. La combinación `JUMP_SPEED = 5` + gravedad `-10` produce un arco moderado.
 
-### 3. "Una tubería se queda atrás mientras las otras se mueven"
+### 5. "FileNotFoundException al cargar audio"
 
-Recuerda: los tres bodies necesitan `setLinearVelocity(SPEED, 0)`. Si olvidas ponerlo en uno, ese body se queda quieto mientras los otros dos avanzan.
-
-### 4. "NullPointerException al crear bodyTop"
-
-Si creas `bodyTop` antes de `bodyDown`, la línea `bodyDown.getPosition().x` lanza NPE porque `bodyDown` todavía es `null`. El orden de creación importa.
-
-### 5. "La textura de la tubería superior está al revés"
-
-En el atlas, `pipeDown` y `pipeUp` son texturas diferentes (una apunta hacia arriba y la otra hacia abajo). Si intercambias las texturas en el constructor, la visual quedará invertida aunque las colisiones funcionen correctamente. Verifica que `trpDown` corresponde a `PIPE_DOWN` y `trpTop` a `PIPE_UP`.
+Los archivos de audio deben estar directamente en `android/assets/`, no en una subcarpeta. Si los tienes en `android/assets/sounds/`, deberías usar `"sounds/jump.mp3"` como ruta o moverlos al directorio raíz.
 
 ---
 
@@ -423,13 +406,13 @@ package com.mygdx.game.extra;
 
 public class Utils {
 
-    public static final int SCREEN_HEIGHT = 800;
+    public static final int SCREEN_HEIGTH = 800;
     public static final int SCREEN_WIDTH = 480;
 
     public static final float WORLD_HEIGHT = 8f;
     public static final float WORLD_WIDTH = 4.8f;
 
-    // Identificadores de texturas
+    // Identificadores de texturas y audio
     public static final String ATLAS_MAP = "FBAtlas";
     public static final String BACKGROUND_IMAGE = "flappy_background";
     public static final String BIRD1 = "bird1";
@@ -437,12 +420,15 @@ public class Utils {
     public static final String BIRD3 = "bird3";
     public static final String PIPE_DOWN = "pipeDown";
     public static final String PIPE_UP = "pipeUp";
+    public static final String SOUND_JUMP = "jump.mp3";
+    public static final String MUSIC_BG = "musicbg.mp3";
 
     // Identificadores de cuerpos
     public static final String USER_BIRD = "bird";
     public static final String USER_PIPE_DOWN = "pipeDown";
     public static final String USER_PIPE_UP = "pipeUp";
     public static final String USER_COUNTER = "counter";
+    public static final String USER_FLOOR = "floor";
 }
 ```
 
@@ -456,10 +442,14 @@ import static com.mygdx.game.extra.Utils.BACKGROUND_IMAGE;
 import static com.mygdx.game.extra.Utils.BIRD1;
 import static com.mygdx.game.extra.Utils.BIRD2;
 import static com.mygdx.game.extra.Utils.BIRD3;
+import static com.mygdx.game.extra.Utils.MUSIC_BG;
 import static com.mygdx.game.extra.Utils.PIPE_DOWN;
 import static com.mygdx.game.extra.Utils.PIPE_UP;
+import static com.mygdx.game.extra.Utils.SOUND_JUMP;
 
 import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -473,6 +463,8 @@ public class AssetMan {
         this.assetManager = new AssetManager();
 
         assetManager.load(ATLAS_MAP, TextureAtlas.class);
+        assetManager.load(SOUND_JUMP, Sound.class);
+        assetManager.load(MUSIC_BG, Music.class);
         assetManager.finishLoading();
 
         this.textureAtlas = assetManager.get(ATLAS_MAP);
@@ -491,14 +483,22 @@ public class AssetMan {
                 textureAtlas.findRegion(BIRD3));
     }
 
-    // TEXTURA DE LA TUBERÍA INFERIOR
+    // TEXTURAS DE TUBERÍAS
     public TextureRegion getPipeDownTR() {
         return this.textureAtlas.findRegion(PIPE_DOWN);
     }
 
-    // TEXTURA DE LA TUBERÍA SUPERIOR
     public TextureRegion getPipeTopTR() {
         return this.textureAtlas.findRegion(PIPE_UP);
+    }
+
+    // AUDIO
+    public Sound getJumpSound() {
+        return this.assetManager.get(SOUND_JUMP);
+    }
+
+    public Music getMusicBG() {
+        return this.assetManager.get(MUSIC_BG);
     }
 }
 ```
@@ -511,6 +511,7 @@ package com.mygdx.game.actors;
 import static com.mygdx.game.extra.Utils.USER_BIRD;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -526,7 +527,7 @@ public class Bird extends Actor {
 
     private static final int STATE_NORMAL = 0;
     private static final int STATE_DEAD = 1;
-    private static final float JUMP_SPEED = 50f;
+    private static final float JUMP_SPEED = 5f;
 
     private int state;
 
@@ -539,12 +540,15 @@ public class Bird extends Actor {
     private Body body;
     private Fixture fixture;
 
-    public Bird(World world, Animation<TextureRegion> animation, Vector2 position) {
+    private Sound jumpSound;
+
+    public Bird(World world, Animation<TextureRegion> animation, Sound sound, Vector2 position) {
         this.birdAnimation = animation;
         this.position = position;
         this.world = world;
         this.stateTime = 0f;
         this.state = STATE_NORMAL;
+        this.jumpSound = sound;
 
         createBody();
         createFixture();
@@ -573,6 +577,7 @@ public class Bird extends Actor {
         boolean jump = Gdx.input.justTouched();
 
         if (jump && this.state == STATE_NORMAL) {
+            this.jumpSound.play();
             this.body.setLinearVelocity(0, JUMP_SPEED);
         }
     }
@@ -724,16 +729,23 @@ public class Pipes extends Actor {
 ```java
 package com.mygdx.game.screens;
 
+import static com.mygdx.game.extra.Utils.USER_FLOOR;
 import static com.mygdx.game.extra.Utils.WORLD_HEIGHT;
 import static com.mygdx.game.extra.Utils.WORLD_WIDTH;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
+import com.badlogic.gdx.physics.box2d.EdgeShape;
+import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
@@ -751,7 +763,9 @@ public class GameScreen extends BaseScreen {
 
     private World world;
 
-    Pipes pipes;
+    private Pipes pipes;
+
+    private Music musicbg;
 
     private Box2DDebugRenderer debugRenderer;
     private OrthographicCamera ortCamera;
@@ -763,6 +777,7 @@ public class GameScreen extends BaseScreen {
         FitViewport fitViewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT);
         this.stage = new Stage(fitViewport);
 
+        this.musicbg = this.mainGame.assetManager.getMusicBG();
         this.ortCamera = (OrthographicCamera) this.stage.getCamera();
         this.debugRenderer = new Box2DDebugRenderer();
     }
@@ -776,8 +791,33 @@ public class GameScreen extends BaseScreen {
 
     public void addBird() {
         Animation<TextureRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
-        this.bird = new Bird(this.world, birdSprite, new Vector2(1f, 4f));
+        Sound sound = mainGame.assetManager.getJumpSound();
+        this.bird = new Bird(this.world, birdSprite, sound, new Vector2(1f, 4f));
         this.stage.addActor(this.bird);
+    }
+
+    private void addFloor() {
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.position.set(WORLD_WIDTH / 2f, 0.6f);
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        Body body = world.createBody(bodyDef);
+        body.setUserData(USER_FLOOR);
+
+        PolygonShape edge = new PolygonShape();
+        edge.setAsBox(2.3f, 0.5f);
+        body.createFixture(edge, 3);
+        edge.dispose();
+    }
+
+    public void addRoof() {
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        Body body = world.createBody(bodyDef);
+
+        EdgeShape edge = new EdgeShape();
+        edge.set(0, WORLD_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT);
+        body.createFixture(edge, 1);
+        edge.dispose();
     }
 
     @Override
@@ -794,12 +834,17 @@ public class GameScreen extends BaseScreen {
     @Override
     public void show() {
         addBackground();
+        addFloor();
+        addRoof();
         addBird();
 
         TextureRegion pipeTRDown = mainGame.assetManager.getPipeDownTR();
         TextureRegion pipeTRTop = mainGame.assetManager.getPipeTopTR();
         this.pipes = new Pipes(this.world, pipeTRDown, pipeTRTop, new Vector2(3.75f, 0f));
         this.stage.addActor(this.pipes);
+
+        this.musicbg.setLooping(true);
+        this.musicbg.play();
     }
 
     @Override
@@ -809,6 +854,8 @@ public class GameScreen extends BaseScreen {
 
         this.pipes.detach();
         this.pipes.remove();
+
+        this.musicbg.stop();
     }
 
     @Override
@@ -819,22 +866,43 @@ public class GameScreen extends BaseScreen {
 }
 ```
 
+### 📄 DesktopLauncher.java
+
+```java
+package com.mygdx.game;
+
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.mygdx.game.extra.Utils;
+
+public class DesktopLauncher {
+    public static void main(String[] arg) {
+        Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
+
+        config.setWindowedMode(Utils.SCREEN_WIDTH, Utils.SCREEN_HEIGTH);
+        config.setForegroundFPS(60);
+        config.setTitle("FB2223");
+        new Lwjgl3Application(new MainGame(), config);
+    }
+}
+```
+
 ---
 
 ## 🛠️ Ejercicio práctico
 
-**Objetivo:** Entender la relación entre los tres cuerpos y experimentar con los parámetros del par de tuberías.
+**Objetivo:** Entender el sistema de audio de LibGDX y la relación entre los parámetros físicos.
 
-1. **Ejecuta el proyecto.** Deberías ver el par de tuberías (inferior y superior) moviéndose lentamente hacia la izquierda. Con el debugRenderer activado, verás tres cajas: las dos tuberías y el rectángulo estrecho del sensor entre ellas.
+1. **Ejecuta el proyecto.** Deberías oír la música de fondo en bucle y el sonido del salto al tocar la pantalla. El pájaro ahora salta mucho menos que antes (JUMP_SPEED = 5).
 
-2. **Ajusta el hueco:** Cambia `COUNTER_HEIGHT` de `2f` a `1f`. ¿Puede el pájaro pasar por el hueco? ¿Y con `4f`?
+2. **Silencia el salto:** Comenta la línea `this.jumpSound.play()` en `Bird.act()`. ¿Notas la diferencia en la experiencia de juego? El feedback auditivo es más importante de lo que parece.
 
-3. **Velocidad de las tuberías:** Cambia `SPEED` de `-0.2f` a `-1f` y luego a `-3f`. ¿En qué punto se vuelve injugable?
+3. **Experimenta con el volumen:** `Sound.play()` devuelve un `long` (el ID de la instancia). Usa la versión con volumen: `this.jumpSound.play(0.5f)` para reproducir al 50%. ¿Cuál suena mejor?
 
-4. **Desincroniza los bodies:** Comenta la línea `bodyTop.setLinearVelocity(SPEED, 0)` en `createBodyPipeTop()`. ¿Qué ocurre visualmente? ¿Por qué?
+4. **Prueba `pause()` vs `stop()`:** En `hide()`, cambia `this.musicbg.stop()` por `this.musicbg.pause()`. Si el juego vuelve a llamar `show()`, ¿la música empieza desde el principio o continúa?
 
-5. **Quita el sensor:** Comenta `this.fixtureCounter.setSensor(true)`. ¿Qué pasa cuando el pájaro intenta pasar por el hueco?
+5. **Ajusta el salto:** Prueba `JUMP_SPEED` con valores `3f`, `5f`, `8f` y `12f`. ¿Cuál combina mejor con la velocidad de las tuberías (`SPEED = -0.2f`)? ¿Y si subes `SPEED` a `-1f`?
 
-6. **Posición inicial:** Cambia la posición en `GameScreen.show()` de `(3.75f, 0f)` a `(3.75f, 2f)`. ¿Cómo afecta esto a la posición del hueco? Calcula mentalmente: si `bodyDown` está en `y=2`, ¿en qué `y` estará el centro del hueco?
+6. **El suelo visible:** El suelo es un rectángulo de `4.6 × 1.0` centrado en `(2.4, 0.6)`. Con el debugRenderer, verifica que el pájaro aterriza sobre él. ¿Qué pasa si cambias la posición y del suelo a `0.0f`?
 
-7. **Pregunta para reflexionar:** El `detach()` no destruye el `bodyCounter` ni su fixture. ¿Es esto un problema real? ¿Cuándo se liberaría esa memoria? ¿Cómo lo arreglarías?
+7. **Pregunta para reflexionar:** ¿Por qué el `Sound` se pasa al `Bird` por constructor en lugar de que `Bird` lo cargue él mismo con `Gdx.audio.newSound()`? Piensa en términos de responsabilidad y reutilización.

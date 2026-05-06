@@ -19,10 +19,9 @@ public class Pipes extends Actor {
     private static final float PIPE_WIDTH = 0.85f;
     private static final float PIPE_HEIGHT = 4f;
     private static final float SPACE_BETWEEN_PIPES = 2f;
-    private static final float SPEED = 0f;
+    private static final float PIPES_SPEED = 0f;
 
 
-    //Todo 1. Creamos textura,cuerpo y fixture para la tubería de arriba
     private TextureRegion pipeDownTR;
     private TextureRegion pipeTopTR;
 
@@ -36,7 +35,6 @@ public class Pipes extends Actor {
 
     private World world;
 
-    //Todo 2. Añadimos la textura para la tubería de arriba al constructor
     public Pipes(World world, TextureRegion trpDown, TextureRegion trpTop, Vector2 position) {
         this.world = world;
         this.pipeDownTR = trpDown;
@@ -55,11 +53,10 @@ public class Pipes extends Actor {
         def.type = BodyDef.BodyType.KinematicBody;
         bodyDown = world.createBody(def);
         bodyDown.setUserData(USER_PIPE_BOTTOM);
-        bodyDown.setLinearVelocity(SPEED,0);
+        bodyDown.setLinearVelocity(PIPES_SPEED,0);
 
     }
 
-    //Todo 3. Creamos el método para crear el cuerpo de la tubería de arriba
     private void createBodyPipeTop() {
         BodyDef def = new BodyDef();
         def.position.x = bodyDown.getPosition().x;  //
@@ -67,7 +64,7 @@ public class Pipes extends Actor {
         def.type = BodyDef.BodyType.KinematicBody;
         bodyTop = world.createBody(def);
         bodyTop.setUserData(USER_PIPE_TOP);
-        bodyTop.setLinearVelocity(SPEED,0);
+        bodyTop.setLinearVelocity(PIPES_SPEED,0);
 
     }
 
@@ -78,8 +75,7 @@ public class Pipes extends Actor {
         shape.setAsBox(PIPE_WIDTH /2, PIPE_HEIGHT /2 );
 
         this.fixtureDown = bodyDown.createFixture(shape,8);
-        //Todo 4.Como es la misma figura podemos aprovechar el método y la forma ya creada
-        // para añadirla a la tubería de arriba
+
         this.fixtureTop = bodyTop.createFixture(shape, 8);
         shape.dispose();
     }
@@ -90,7 +86,7 @@ public class Pipes extends Actor {
         bodyDef.position.set(bodyDown.getPosition().x, (bodyDown.getPosition().y + bodyTop.getPosition().y) / 2f);
         bodyDef.type = BodyDef.BodyType.KinematicBody;
         this.bodyCounter = this.world.createBody(bodyDef);
-        this.bodyCounter.setLinearVelocity(Pipes.SPEED,0f);
+        this.bodyCounter.setLinearVelocity(Pipes.PIPES_SPEED,0f);
 
         PolygonShape polygonShape = new PolygonShape();
         polygonShape.setAsBox(0.1f,0.90f);
@@ -115,7 +111,6 @@ public class Pipes extends Actor {
             PIPE_WIDTH,
             PIPE_HEIGHT);
 
-        //Todo 5. Dibujamos la imagen de la tubería superior similar al resto de elementos
         batch.draw(this.pipeTopTR,
             bodyTop.getPosition().x - PIPE_WIDTH/2,
             bodyTop.getPosition().y - PIPE_HEIGHT/2,
@@ -128,7 +123,6 @@ public class Pipes extends Actor {
         bodyDown.destroyFixture(fixtureDown);
         world.destroyBody(bodyDown);
 
-        //Todo 6. Destruimos los recursos
         bodyTop.destroyFixture(fixtureTop);
         world.destroyBody(bodyTop);
     }

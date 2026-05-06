@@ -5,6 +5,8 @@ import static com.iesfa.fb.extra.Utils.USER_ROOF;
 import static com.iesfa.fb.extra.Utils.WORLD_HEIGTH;
 import static com.iesfa.fb.extra.Utils.WORLD_WIDTH;
 
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
@@ -31,11 +33,12 @@ public class GameScreen extends BaseScreen {
     private Pipes pipes;
 
     private Image background;
-
+    //Todo 8. Creamos objeto MusicGame para la musica de fondo
+    private Music musicbg;
 
     private World world;
 
-
+    // ----- DEPURACIÓN DE LA FÍSICA ----- //
     private Box2DDebugRenderer debugRenderer;
     private OrthographicCamera ortCamera;
 
@@ -47,10 +50,12 @@ public class GameScreen extends BaseScreen {
         FitViewport fitViewport = new FitViewport(WORLD_WIDTH,WORLD_HEIGTH);
         this.stage = new Stage(fitViewport);
 
+        //Todo 9. Inicializamos el objeto desde la instancia desde assetMan
+        this.musicbg = this.mainGame.assetManager.getMusicBG();
+
+        // ---- DEPURACIÓN ---- //
         this.ortCamera = (OrthographicCamera) this.stage.getCamera();
         this.debugRenderer = new Box2DDebugRenderer();
-
-
 
     }
 
@@ -61,10 +66,17 @@ public class GameScreen extends BaseScreen {
         addFloor();
         addBird();
         addPipes();
+
+        //Todo 10. Reproducimos la música cuando aparezca la pantalla
+        //loop
+        this.musicbg.setLooping(true);
+        //ajustamos el volumen (0 min - 1 max)
+        this.musicbg.setVolume(0.3f);
+        //Reproducimos
+        this.musicbg.play();
+
     }
 
-
-    //Todo alumno: Crear un método que añada el techo con la clase EdgeShape
     public void addRoof(){
         BodyDef bodyDef = new BodyDef();
         bodyDef.type = BodyDef.BodyType.StaticBody;
@@ -77,7 +89,6 @@ public class GameScreen extends BaseScreen {
         edge.dispose();
     }
 
-    //Todo alumno: Crear un método que añada el 'cuerpo' y la 'forma' del suelo
     private void addFloor() {
         BodyDef bodyDef = new BodyDef();
         bodyDef.position.set(WORLD_WIDTH / 2f, 0.6f);
@@ -94,9 +105,12 @@ public class GameScreen extends BaseScreen {
     public void addBird(){
         //Cargamos la animación del pájaro
         Animation<AtlasRegion> birdSprite = mainGame.assetManager.getBirdAnimation();
-        //Creamos la instancia del pajaro pasandole la referencia del mundo, su animación, y su
-        // posición en el mundo físico
-        this.bird = new Bird(this.world,birdSprite, new Vector2(1.35f ,4.75f ));
+        //Todo 6. Pedimmos a assetManager que nos de el sonido.
+        Sound soundBird = this.mainGame.assetManager.getJumpSound();
+        //Creamos la instancia del pajaro pasandole la referencia del mundo, su animación,
+        // el sonido y posición en el mundo físico
+        //Todo 7. Le pasamos al constructor el sonido
+        this.bird = new Bird(this.world,birdSprite,soundBird, new Vector2(1.35f ,4.75f ));
         //Añadimos el pajaro a la escena
         this.stage.addActor(this.bird);
     }
@@ -104,14 +118,11 @@ public class GameScreen extends BaseScreen {
     public void addPipes(){
         //Cargamos la textura de la tubería inferior
         TextureRegion pipeDownTexture = mainGame.assetManager.getPipeBottom();
-        //Todo 7 Creamos la textura, la pasamos al constructor
         TextureRegion pipeTopTexture = mainGame.assetManager.getPipeTop();
 
-        //Todo alumno: Posicion aleatoria de las tuberías
         float posRandomY = MathUtils.random(0f,2f);
         this.pipes = new Pipes(this.world, pipeDownTexture,pipeTopTexture,new Vector2(3.75f,2f));
 
-        // Todo-> y se lo pasamos al escenario
         this.stage.addActor(this.pipes);
     }
 
@@ -146,9 +157,11 @@ public class GameScreen extends BaseScreen {
         //remove
         this.bird.remove();
 
-        //Todo 13. liberamos el objeto pipe
         this.pipes.detach();
         this.pipes.remove();
+
+        //Todo 11.Paramos la música cuando se oculte la pantalla
+        this.musicbg.stop();
     }
 
     @Override
