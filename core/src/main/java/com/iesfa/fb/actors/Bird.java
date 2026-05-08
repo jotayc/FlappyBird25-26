@@ -33,10 +33,8 @@ public class Bird extends Actor {
     private Body body;
     private Fixture fixture;
 
-    //Todo 3. Creamos sonido para el objeto bird.
     private Sound jumpSound;
 
-    //Todo 4. Modificar el constructor para añadir el recurso del sonido.
     public Bird(World world, Animation<AtlasRegion> animation,Sound sound, Vector2 position) {
         this.birdAnimation = animation;
         this.position      = position;
@@ -81,6 +79,11 @@ public class Bird extends Actor {
         circle.dispose();
     }
 
+    //Todo 1. Creamos un método 'hurt' para cambiar el estado del pájaro cuando este colisione
+    public void hurt(){
+        this.state = STATE_DEAD;
+        this.stateTime = 0;
+    }
 
 
     @Override

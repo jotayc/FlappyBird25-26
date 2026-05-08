@@ -96,11 +96,16 @@ public class Pipes extends Actor {
         polygonShape.dispose();
     }
 
-    //Todo 5. Creamos un método que nos diga si el objeto pipes está fuera de la pantalla
     public boolean isOutOfScreen(){
         return this.bodyDown.getPosition().x <= -2f;
     }
 
+    //Todo 2. Creamos un método para detener el movimiento de las tuberías y el contador
+    public void stopPipes(){
+        this.bodyDown.setLinearVelocity(0,0);
+        this.bodyTop.setLinearVelocity(0,0);
+        this.bodyCounter.setLinearVelocity(0,0);
+    }
     @Override
     public void act(float delta) {
         super.act(delta);

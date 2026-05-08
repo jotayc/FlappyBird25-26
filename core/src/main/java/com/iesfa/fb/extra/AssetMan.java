@@ -25,8 +25,6 @@ public class AssetMan {
     private AssetManager assetManager;
     private TextureAtlas textureAtlas;
 
-
-
     public AssetMan() {
         this.assetManager = new AssetManager();
 
@@ -68,11 +66,8 @@ public class AssetMan {
         return this.assetManager.get(MUSIC_BG);
     }
 
-    //Todo 10. Para usar las fuentes previamente las habremos tenido que añadir,
-    // se recomienda usar la aplicación Hiero
     //Crear en utils las variables para los identificadores de los archivos.
     public BitmapFont getFont(){
         return new BitmapFont(Gdx.files.internal(FONT_FNT),Gdx.files.internal(FONT_PNG), false);
     }
-
 }
