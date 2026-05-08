@@ -119,11 +119,10 @@ public class GameScreen extends BaseScreen {
         BodyDef bodyDef = new BodyDef();
         bodyDef.type = BodyDef.BodyType.StaticBody;
         Body body = world.createBody(bodyDef);
-        body.setUserData(USER_ROOF);
 
         EdgeShape edge = new EdgeShape();
         edge.set(0,WORLD_HEIGTH,WORLD_WIDTH,WORLD_HEIGTH);
-        body.createFixture(edge, 1);
+        body.createFixture(edge, 1).setUserData(USER_ROOF);
         edge.dispose();
     }
 
@@ -132,11 +131,11 @@ public class GameScreen extends BaseScreen {
         bodyDef.position.set(WORLD_WIDTH / 2f, 0.6f);
         bodyDef.type = BodyDef.BodyType.StaticBody;
         Body body = world.createBody(bodyDef);
-        body.setUserData(USER_FLOOR);
+
 
         PolygonShape edge = new PolygonShape();
         edge.setAsBox(2.3f, 0.5f);
-        body.createFixture(edge, 3);
+        body.createFixture(edge, 3).setUserData(USER_FLOOR);
         edge.dispose();
     }
 

@@ -19,7 +19,7 @@ public class Pipes extends Actor {
     private static final float PIPE_WIDTH = 0.85f;
     private static final float PIPE_HEIGHT = 4f;
     private static final float SPACE_BETWEEN_PIPES = 2f;
-    private static final float PIPES_SPEED = 0f;
+    private static final float PIPES_SPEED = -2f;
 
 
     private TextureRegion pipeDownTR;
@@ -52,7 +52,6 @@ public class Pipes extends Actor {
         def.position.set(position);
         def.type = BodyDef.BodyType.KinematicBody;
         bodyDown = world.createBody(def);
-        bodyDown.setUserData(USER_PIPE_BOTTOM);
         bodyDown.setLinearVelocity(PIPES_SPEED,0);
 
     }
@@ -63,7 +62,6 @@ public class Pipes extends Actor {
         def.position.y =   bodyDown.getPosition().y + PIPE_HEIGHT + SPACE_BETWEEN_PIPES;
         def.type = BodyDef.BodyType.KinematicBody;
         bodyTop = world.createBody(def);
-        bodyTop.setUserData(USER_PIPE_TOP);
         bodyTop.setLinearVelocity(PIPES_SPEED,0);
 
     }
@@ -75,8 +73,9 @@ public class Pipes extends Actor {
         shape.setAsBox(PIPE_WIDTH /2, PIPE_HEIGHT /2 );
 
         this.fixtureDown = bodyDown.createFixture(shape,8);
-
+        this.fixtureDown.setUserData(USER_PIPE_BOTTOM);
         this.fixtureTop = bodyTop.createFixture(shape, 8);
+        this.fixtureTop.setUserData(USER_PIPE_TOP);
         shape.dispose();
     }
 
