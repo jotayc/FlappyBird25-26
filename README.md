@@ -1,261 +1,285 @@
-# 🐦 Construyendo Flappy Bird — Rama `7.MultiplePipes&Score`
-## Generación continua de tuberías y puntuación en pantalla
+# 🐦 Construyendo Flappy Bird — Rama `8.Collisions`
+## El juego detecta colisiones, cuenta puntos y cambia de pantalla
 
-> *Hasta ahora solo existía un par de tuberías. Pero Flappy Bird necesita un flujo continuo de obstáculos que aparecen periódicamente y desaparecen cuando salen de la pantalla. Además, el jugador necesita ver su puntuación. Esta rama introduce cuatro conceptos clave de desarrollo de videojuegos: la generación temporizada de objetos (spawning), la gestión de colecciones de actores, la limpieza segura de recursos durante la simulación física, y el renderizado de texto con una cámara independiente.*
+> *Las tuberías se mueven y el pájaro cae, pero ninguno sabe que existe el otro. En esta rama conectamos el motor físico con la lógica del juego: cuando el pájaro toca una tubería, muere; cuando cruza el sensor, suma un punto. Es el momento en que el juego realmente empieza a ser un juego.*
 
 ---
 
 ## ¿Qué cambia en esta rama?
 
-La rama 6 tenía un solo par de tuberías creado en `show()`. Esta rama lo transforma en un sistema completo:
+La rama 7 tenía tuberías en movimiento y una "puntuación" falsa basada en cuántas tuberías había activas. Esta rama añade la lógica real:
 
-1. **Generación temporizada**: cada 1.5 segundos aparece un nuevo par de tuberías fuera de la pantalla.
-2. **Posición vertical aleatoria**: el hueco de cada tubería está a una altura diferente.
-3. **Eliminación automática**: cuando una tubería sale de la pantalla, se destruyen sus bodies y se libera la memoria.
-4. **Colección dinámica**: un `Array<Pipes>` gestiona todos los pares de tuberías activos.
-5. **Puntuación visual**: un `BitmapFont` dibuja en pantalla cuántas tuberías hay activas, usando una cámara independiente.
-6. **Preparación de pantallas**: `MainGame` crea las tres pantallas del juego (`GameScreen`, `GameOverScreen`, `GetReadyScreen`).
-
----
-
-## Paso 1 — El problema: ¿cómo generar tuberías periódicamente?
-
-### El concepto de "spawning"
-
-En videojuegos, **spawning** es la creación de nuevos objetos durante la partida. No podemos crear todas las tuberías al inicio porque no sabemos cuántas necesitaremos — la partida puede durar 10 segundos o 10 minutos. Necesitamos un sistema que cree tuberías **mientras se juega**.
-
-### La técnica: acumulador de tiempo
-
-El bucle `render()` se ejecuta ~60 veces por segundo. Cada ejecución recibe un `delta` (tiempo transcurrido desde el frame anterior, típicamente ~0.016 segundos). La idea es ir acumulando estos deltas hasta alcanzar el tiempo deseado:
-
-```
-Frame 1:  timeToCreatePipe = 0.000 + 0.016 = 0.016
-Frame 2:  timeToCreatePipe = 0.016 + 0.017 = 0.033
-Frame 3:  timeToCreatePipe = 0.033 + 0.016 = 0.049
-...
-Frame 90: timeToCreatePipe = 1.489 + 0.016 = 1.505  → ¡CREAR TUBERÍA!
-          timeToCreatePipe = 1.505 - 1.500 = 0.005   → reiniciar contador
-```
-
-### Analogía: un temporizador de cocina
-
-Es como poner un temporizador de 1.5 minutos para hornear galletas. Cada segundo miras el reloj. Cuando llega a 1:30, sacas las galletas y vuelves a poner el temporizador. Aquí el "reloj" es el acumulador `timeToCreatePipe` y las "galletas" son los pares de tuberías.
+1. **`ContactListener`**: interfaz de Box2D que notifica cuando dos fixtures se tocan.
+2. **Puntuación real**: `scoreNumber` se incrementa cuando el pájaro cruza el sensor.
+3. **Muerte del pájaro**: al tocar una tubería, el suelo o el techo, el juego se detiene.
+4. **Parada de tuberías**: `stopPipes()` congela todos los pares activos al morir.
+5. **Transición de pantalla**: tras 1.5 segundos de gracia, el juego pasa a `GameOverScreen`.
+6. **Corrección del `userData`**: los identificadores se mueven a las fixtures (no los bodies) para que el `ContactListener` pueda distinguirlos. También se corrige el bug de `USER_COUNTER` de la rama anterior.
 
 ---
 
-## Paso 2 — El `Array` de LibGDX: colecciones para juegos
+## Paso 1 — El `ContactListener`: escuchar los choques del mundo físico
 
-### ¿Por qué `Array` de LibGDX y no `ArrayList` de Java?
+### ¿Qué es y cómo funciona?
 
-LibGDX proporciona su propia clase `Array<T>` (en `com.badlogic.gdx.utils.Array`) optimizada para videojuegos:
+Hasta ahora Box2D simulaba físicas — los cuerpos colisionaban — pero el juego no se enteraba. Para recibir notificaciones de colisión, Box2D ofrece la interfaz `ContactListener`. Tiene cuatro métodos:
 
-| Característica | `java.util.ArrayList` | `com.badlogic.gdx.utils.Array` |
-|---------------|----------------------|-------------------------------|
-| Creación de basura (GC) | Genera basura al redimensionar | Minimiza la creación de objetos temporales |
-| Iteración | Iterator crea objetos nuevos | Iteración directa sin allocations |
-| Rendimiento en juegos | Pausas por Garbage Collector | Predecible, sin pausas |
+| Método | Cuándo se llama |
+|--------|----------------|
+| `beginContact(Contact)` | Al inicio del contacto, cuando dos fixtures se tocan por primera vez |
+| `endContact(Contact)` | Cuando las dos fixtures se separan |
+| `preSolve(Contact, Manifold)` | Justo antes de que Box2D calcule la respuesta física |
+| `postSolve(Contact, ContactImpulse)` | Justo después de calcular la respuesta |
 
-En un juego que ejecuta 60 frames por segundo, cada milisegundo cuenta. El Garbage Collector de Java puede provocar **micro-pausas** cuando limpia objetos temporales. La clase `Array` de LibGDX está diseñada para evitar estas pausas.
+En este proyecto solo usamos `beginContact()`. Los otros tres se implementan vacíos para cumplir el contrato de la interfaz.
 
-> ⚠️ **Error muy común en clase:** Importar `java.util.Array` o `java.util.ArrayList` en lugar de `com.badlogic.gdx.utils.Array`. El IDE puede sugerir la importación incorrecta. Asegúrate de que el import sea:
-> ```java
-> import com.badlogic.gdx.utils.Array;
-> ```
+### Analogía: un árbitro de fútbol
 
-### Nuevos atributos y constantes en `GameScreen`
+El `ContactListener` es como el árbitro de un partido: observa constantemente el campo y cuando dos jugadores entran en contacto, pita. Box2D es el campo donde ocurre el juego, los bodies son los jugadores, y el árbitro (ContactListener) decide qué consecuencias tiene cada contacto: si es un gol (sensor = punto), una falta (tubería = muerte) o irrelevante (el pájaro rozando el borde del hueco sin consecuencias).
+
+### Implementación
+
+`GameScreen` implementa la interfaz directamente:
 
 ```java
-private final float TIME_TO_SPAWN_PIPES = 1.5f;  // segundos entre tuberías
-private float timeToCreatePipe;                    // acumulador de tiempo
-private Array<Pipes> arrayPipes;                   // colección de pares activos
+public class GameScreen extends BaseScreen implements ContactListener {
+    // ...
+}
 ```
 
-Y en el constructor:
+Y en el constructor, se registra como oyente del mundo físico:
 
 ```java
-this.arrayPipes = new Array();
-this.timeToCreatePipe = 0f;
+this.world = new World(new Vector2(0, -10), true);
+this.world.setContactListener(this);   // ← registrar el listener
+```
+
+A partir de este momento, cada vez que dos fixtures del mundo entren en contacto, Box2D llamará a `beginContact()` de `GameScreen`.
+
+---
+
+## Paso 2 — El problema: ¿cómo saber qué ha chocado con qué?
+
+### El objeto `Contact`
+
+`beginContact(Contact contact)` recibe un objeto `Contact` que tiene dos métodos clave:
+
+```java
+contact.getFixtureA()   // primera fixture del contacto
+contact.getFixtureB()   // segunda fixture del contacto
+```
+
+Pero Box2D no garantiza el orden: en un contacto entre el pájaro y la tubería inferior, `fixtureA` podría ser el pájaro o la tubería, dependiendo del frame. Tenemos que comprobar ambas combinaciones.
+
+### El método auxiliar `areColider()`
+
+Para hacer esta comprobación legible, `GameScreen` introduce un método helper:
+
+```java
+public boolean areColider(Contact contact, Object objA, Object objB) {
+    return (contact.getFixtureA().getUserData().equals(objA) &&
+            contact.getFixtureB().getUserData().equals(objB))
+        ||
+           (contact.getFixtureA().getUserData().equals(objB) &&
+            contact.getFixtureB().getUserData().equals(objA));
+}
+```
+
+Comprueba si las dos fixtures tienen exactamente los `userData` indicados, en cualquier orden. Así se puede preguntar con claridad:
+
+```java
+areColider(contact, USER_BIRD, USER_COUNTER)    // ¿ha cruzado el pájaro el sensor?
+areColider(contact, USER_BIRD, USER_PIPE_DOWN)  // ¿ha tocado la tubería inferior?
 ```
 
 ---
 
-## Paso 3 — El método `addPipes()`: spawn temporizado
+## Paso 3 — `userData` en las fixtures: el cambio crítico
 
-Este es el método central de la rama. Se llama en cada frame desde `render()`:
+### ¿Por qué el cambio?
+
+`areColider()` llama a `contact.getFixtureA().getUserData()`. Esto significa que el identificador debe estar en la **fixture**, no en el body. En la rama 7, algunos `userData` estaban en los bodies (que `getFixtureA()` no devuelve). En esta rama se reorganiza todo:
+
+**Antes (rama 7):**
+```java
+// En Pipes — userData en el body
+bodyDown.setUserData(USER_PIPE_DOWN);
+bodyTop.setUserData(USER_PIPE_TOP);
+
+// El counter tenía userData en la fixture (correcto)
+this.fixtureCounter.setUserData(USER_COUNTER);
+```
+
+**Ahora (rama 8):**
+```java
+// En Pipes — userData en las FIXTURES
+this.fixtureDown.setUserData(USER_PIPE_DOWN);
+this.fixtureTop.setUserData(USER_PIPE_TOP);
+this.fixtureCounter.setUserData(USER_COUNTER);
+
+// Los bodies ya NO tienen setUserData
+```
 
 ```java
-public void addPipes(float delta) {
+// En Bird — userData en la FIXTURE
+this.fixture.setUserData(Utils.USER_BIRD);
 
-    TextureRegion pipeDownTexture = mainGame.assetManager.getPipeDownTR();
-    TextureRegion pipeTopTexture = mainGame.assetManager.getPipeUpTR();
+// El body ya NO tiene setUserData
+```
 
-    if (bird.state == Bird.STATE_NORMAL) {
-        this.timeToCreatePipe += delta;
+```java
+// En GameScreen — addFloor y addRoof también asignan userData a la fixture
+body.createFixture(edge, 3).setUserData(USER_FLOOR);   // suelo
+body.createFixture(edge, 1).setUserData(USER_ROOF);    // techo
+```
 
-        if (this.timeToCreatePipe >= TIME_TO_SPAWN_PIPES) {
-            this.timeToCreatePipe -= TIME_TO_SPAWN_PIPES;
+La regla es consistente: **todos los `userData` están en fixtures** en esta rama.
 
-            float posRandomY = MathUtils.random(0f, 2f);
-            Pipes pipes = new Pipes(this.world, pipeDownTexture, pipeTopTexture,
-                                    new Vector2(5f, posRandomY));
-            arrayPipes.add(pipes);
-            this.stage.addActor(pipes);
+### Corrección del bug `USER_COUNTER`
+
+En la rama 7, `Utils` tenía un error:
+
+```java
+// Rama 7 — BUG:
+public static final String USER_COUNTER = "pipeTop";  // ← igual que USER_PIPE_TOP!
+```
+
+Esto hacía imposible distinguir entre el sensor y la tubería superior. En esta rama se corrige:
+
+```java
+// Rama 8 — CORRECTO:
+public static final String USER_COUNTER = "counter";   // ← valor único
+```
+
+Además se añade `USER_ROOF`:
+
+```java
+public static final String USER_ROOF = "roof";
+```
+
+---
+
+## Paso 4 — `beginContact()`: la lógica del juego
+
+Este es el método central de la rama. Toda la lógica de colisiones vive aquí:
+
+```java
+@Override
+public void beginContact(Contact contact) {
+
+    if (areColider(contact, USER_BIRD, USER_COUNTER)) {
+        // El pájaro ha cruzado el sensor → punto
+        this.scoreNumber++;
+
+    } else {
+        // El pájaro ha tocado cualquier otra cosa → muerte
+        this.bird.hurt();
+
+        for (Pipes pipe : this.arrayPipes) {
+            pipe.stopPipes();
         }
+
+        this.musicbg.stop();
+
+        this.stage.addAction(Actions.sequence(
+            Actions.delay(1.5f),
+            Actions.run(new Runnable() {
+                @Override
+                public void run() {
+                    mainGame.setScreen(mainGame.gameOverScreen);
+                }
+            })
+        ));
     }
 }
 ```
 
-Analicemos cada parte:
-
-### 3.1 — Acceso directo a `bird.state`
+### 4.1 — Sumar punto al cruzar el sensor
 
 ```java
-if (bird.state == Bird.STATE_NORMAL) { ... }
-```
-
-En esta rama, el atributo `state` de `Bird` pasa de `private` a `public`. Esto permite que `GameScreen` acceda directamente sin un getter. Es una solución rápida y funcional, aunque desde el punto de vista de la encapsulación no es la más elegante. Un getter `getState()` o un método `isAlive()` sería más limpio, pero para este proyecto educativo es perfectamente válido.
-
-### 3.2 — ¿Por qué restar y no resetear a cero?
-
-```java
-this.timeToCreatePipe -= TIME_TO_SPAWN_PIPES;  // Resta, no asigna 0
-```
-
-Si `timeToCreatePipe` llega a `1.505` y restamos `1.5`, queda `0.005` — ese "sobrante" se conserva para el siguiente ciclo. Si lo pusiéramos a `0`, perderíamos esos `0.005` segundos. En la práctica, la diferencia es mínima, pero restar evita **drift temporal** (desviación progresiva del timing).
-
-### 3.3 — Posición aleatoria con `MathUtils.random()`
-
-```java
-float posRandomY = MathUtils.random(0f, 2f);
-```
-
-La posición Y del bodyDown se elige aleatoriamente entre `0f` y `2f`. La tubería superior se posiciona automáticamente a `PIPE_HEIGHT + SPACE_BETWEEN_PIPES` por encima, así que el hueco varía en cada par:
-
-```
-posRandomY = 0.0  →  hueco bajo, cerca del suelo
-posRandomY = 1.0  →  hueco a media altura
-posRandomY = 2.0  →  hueco más alto
-```
-
-### 3.4 — Posición X fuera de pantalla
-
-```java
-new Vector2(5f, posRandomY)
-```
-
-La coordenada X es `5f`, fuera del borde derecho (`WORLD_WIDTH = 4.8f`). La tubería aparece invisible y se desliza hacia la izquierda con `SPEED = -2f`.
-
-### 3.5 — Añadir al array Y al Stage
-
-```java
-arrayPipes.add(pipes);           // Para poder iterar y limpiar después
-this.stage.addActor(pipes);      // Para que se dibuje y actualice
-```
-
-Ambas líneas son necesarias: el Stage llama a `act()` y `draw()`, y el array permite iterar para la eliminación.
-
----
-
-## Paso 4 — `isOutOfScreen()` en `Pipes`
-
-Para saber cuándo eliminar una tubería, `Pipes` expone un nuevo método:
-
-```java
-public boolean isOutOfScreen() {
-    return this.bodyDown.getPosition().x <= -2f;
+if (areColider(contact, USER_BIRD, USER_COUNTER)) {
+    this.scoreNumber++;
 }
 ```
 
-¿Por qué `-2f` y no `0f`? Porque `bodyDown.getPosition().x` es el **centro** del body. Con `PIPE_WIDTH = 0.85f`, el borde derecho está a `centro + 0.425f`. Usando `-2f` como umbral, nos aseguramos de que la tubería ha desaparecido completamente antes de eliminarla:
+`scoreNumber` es ahora un contador real. Cuando el pájaro (fixture con `USER_BIRD`) toca el sensor (fixture con `USER_COUNTER`), se incrementa. El score se muestra en pantalla en `render()`:
 
+```java
+this.score.draw(this.stage.getBatch(), "" + this.scoreNumber, SCREEN_WIDTH / 2, 725);
 ```
-    Pantalla visible
-    ←─────────────────────→
-    0                    4.8
 
-    ┌─┐ x = -0.5  → borde derecho aún cerca de 0 (podría verse)
-    │ │
-    └─┘
-    
-    ┌─┐ x = -2.0  → completamente fuera → isOutOfScreen() = true ✓
-    │ │
-    └─┘
+### 4.2 — Muerte por cualquier otro contacto
+
+Si el contacto no es pájaro+sensor, es pájaro+algo_letal (tubería, suelo, techo). Las consecuencias se ejecutan en cuatro pasos:
+
+**`bird.hurt()`**: Cambia el estado del pájaro a `STATE_DEAD` y resetea `stateTime`:
+
+```java
+// En Bird.java:
+public void hurt() {
+    this.state = STATE_DEAD;
+    this.stateTime = 0;
+}
 ```
+
+Resetear `stateTime` reinicia la animación del pájaro desde el frame 0. A partir de ahora, `act()` ya no procesará input porque la condición `this.state == STATE_NORMAL` es falsa, y `addPipes()` en `GameScreen` tampoco creará nuevas tuberías.
+
+**`pipe.stopPipes()`**: Congela los tres bodies de cada par de tuberías:
+
+```java
+// En Pipes.java:
+public void stopPipes() {
+    this.bodyDown.setLinearVelocity(0, 0);
+    this.bodyTop.setLinearVelocity(0, 0);
+    this.bodyCounter.setLinearVelocity(0, 0);
+}
+```
+
+Las tuberías se detienen en seco. Esto da al jugador la sensación de que el tiempo se para al morir — un efecto de feedback inmediato antes de ir a la pantalla de game over.
+
+**`musicbg.stop()`**: La música se detiene en el momento del impacto.
+
+**`Actions.sequence()`**: Espera 1.5 segundos y después cambia de pantalla.
 
 ---
 
-## Paso 5 — `removePipes()`: limpieza segura
+## Paso 5 — `Actions`: animaciones del Stage sin gestión manual de tiempo
 
-### El problema: no puedes destruir bodies durante `world.step()`
+### ¿Qué son los Actions?
 
-Box2D procesa la física durante `world.step()`. Si destruyes un body mientras la simulación está en marcha, el motor puede crashear. Por eso existe `world.isLocked()`:
+En LibGDX, los `Actions` son tareas que el Stage ejecuta automáticamente en cada `act()`. Son como instrucciones programadas: "espera 1.5 segundos, después haz esto". Sin Actions, tendríamos que gestionar un temporizador manual similar al de las tuberías.
+
+### `Actions.sequence()`: encadenar acciones
+
+`Actions.sequence()` ejecuta sus argumentos uno tras otro:
 
 ```java
-public void removePipes() {
-    for (Pipes pipe : this.arrayPipes) {
-        if (!world.isLocked()) {
-            if (pipe.isOutOfScreen()) {
-                pipe.detach();
-                pipe.remove();
-                arrayPipes.removeValue(pipe, false);
-            }
+Actions.sequence(
+    Actions.delay(1.5f),          // esperar 1.5 segundos
+    Actions.run(new Runnable() {  // después ejecutar este código
+        @Override
+        public void run() {
+            mainGame.setScreen(mainGame.gameOverScreen);
         }
-    }
-}
+    })
+)
 ```
 
-### Desglose
+**`Actions.delay(1.5f)`**: pausa de 1.5 segundos. Durante este tiempo el juego sigue renderizando (el pájaro cae sobre el suelo, las tuberías están quietas) pero no ocurre nada nuevo.
 
-**`!world.isLocked()`**: Verifica que el mundo no está en medio de un step. `removePipes()` se llama **después** de `world.step()`, así que normalmente no estará bloqueado, pero es una comprobación defensiva.
+**`Actions.run(Runnable)`**: ejecuta código arbitrario. Aquí se usa para cambiar de pantalla. La clase anónima `Runnable` es un patrón de Java para pasar código como parámetro — el equivalente a una lambda en versiones modernas.
 
-**`pipe.detach()`**: Destruye fixtures y bodies Box2D. En esta rama, `detach()` de `Pipes` se ha mejorado para destruir los **tres** bodies (incluyendo el counter):
+### ¿Por qué `stage.addAction()` y no `bird.addAction()`?
 
-```java
-public void detach() {
-    bodyDown.destroyFixture(fixtureDown);
-    world.destroyBody(bodyDown);
-
-    bodyTop.destroyFixture(fixtureTop);
-    world.destroyBody(bodyTop);
-
-    bodyCounter.destroyFixture(fixtureCounter);  // ← NUEVO: ahora sí se limpia
-    world.destroyBody(bodyCounter);
-}
-```
-
-Este era un problema pendiente de la rama 5 (donde `detach()` no destruía el counter). Ahora la limpieza es completa.
-
-**`pipe.remove()`**: Quita el Actor del Stage.
-
-**`arrayPipes.removeValue(pipe, false)`**: Elimina la referencia del array. El parámetro `false` indica que usa `==` (identidad de referencia) en lugar de `.equals()`.
+La acción se añade al **Stage** entero, no a un Actor concreto. Si se añadiera al pájaro y este fuera eliminado del Stage, la acción se cancelaría. Al añadirla al Stage, se garantiza que se ejecuta aunque el pájaro sea eliminado.
 
 ---
 
-## Paso 6 — La puntuación: `BitmapFont` y doble cámara
-
-### El problema de las fuentes en LibGDX
-
-Los elementos del juego (pájaro, tuberías, fondo) se dibujan en **coordenadas del mundo** (0 a 4.8 de ancho, 0 a 8 de alto). Pero las fuentes (`BitmapFont`) trabajan en **píxeles**. Si intentas dibujar texto con la cámara del mundo, las letras serán enormes o microscópicas porque la cámara interpreta cada unidad como metros, no como píxeles.
-
-La solución es usar **dos cámaras**:
-- `worldCamera`: proyecta el mundo del juego (4.8 × 8 unidades).
-- `fontCamera`: proyecta el texto en píxeles (480 × 800 píxeles).
-
-### Analogía: dos proyectores en un cine
-
-Imagina un cine con dos proyectores apuntando a la misma pantalla. Uno proyecta la película (el mundo del juego) y otro proyecta los subtítulos (la puntuación). Cada proyector tiene su propia escala y configuración, pero el espectador ve ambos superpuestos.
-
-### Preparar la fuente y la cámara
-
-```java
-private OrthographicCamera fontCamera;
-private BitmapFont score;
-```
-
-El método `prepareScore()` se llama en el constructor de `GameScreen`:
+## Paso 6 — El nuevo `scoreNumber` en `prepareScore()`
 
 ```java
 private void prepareScore() {
+    this.scoreNumber = 0;                         // ← inicializar a 0
     this.score = this.mainGame.assetManager.getFont();
     this.score.getData().scale(1f);
 
@@ -265,226 +289,31 @@ private void prepareScore() {
 }
 ```
 
-**`getFont()`** en `AssetMan` crea un `BitmapFont` a partir de dos archivos:
-
-```java
-public BitmapFont getFont() {
-    return new BitmapFont(
-        Gdx.files.internal(FONT_FNT),   // archivo .fnt (descripción del font)
-        Gdx.files.internal(FONT_PNG),    // archivo .png (textura con los caracteres)
-        false                             // no voltear verticalmente
-    );
-}
-```
-
-Los archivos `.fnt` y `.png` se generan con la herramienta **Hiero** (incluida con LibGDX). Hiero permite crear fuentes bitmap a partir de fuentes TrueType, eligiendo tamaño, color, borde y sombra.
-
-**`scale(1f)`** ajusta el tamaño del texto. Un valor de `1f` duplica el tamaño base. Prueba diferentes valores hasta que el texto se vea bien.
-
-**`setToOrtho(false, SCREEN_WIDTH, SCREEN_HEIGHT)`** configura la cámara de fuente en coordenadas de pantalla (píxeles). `false` significa que el eje Y apunta hacia arriba (como en el mundo del juego).
-
-### Nuevas constantes en `Utils`
-
-```java
-public static final String FONT_FNT = "FBFont.fnt";
-public static final String FONT_PNG = "FBFont.png";
-```
-
-Los archivos de fuente deben estar en `android/assets/`:
-
-```
-android/assets/
-├── atlasFB.txt
-├── atlasFB.png
-├── jump.mp3
-├── musicbg.mp3
-├── FBFont.fnt        ← descripción del font
-└── FBFont.png        ← textura con los caracteres
-```
-
----
-
-## Paso 7 — Dibujar la puntuación en `render()`
-
-### El cambio de cámara en el batch
-
-Esta es la parte más delicada de la rama. En `render()`, el batch del Stage cambia de cámara **dos veces**:
-
-```java
-@Override
-public void render(float delta) {
-
-    addPipes(delta);
-
-    // --- FASE 1: Dibujar el mundo del juego ---
-    this.stage.getBatch().setProjectionMatrix(worldCamera.combined);
-    this.stage.act();
-    this.world.step(delta, 6, 2);
-    this.stage.draw();
-
-    this.worldCamera.update();
-    this.debugRenderer.render(this.world, this.worldCamera.combined);
-
-    removePipes();
-
-    // --- FASE 2: Dibujar la puntuación en píxeles ---
-    this.stage.getBatch().setProjectionMatrix(this.fontCamera.combined);
-    this.stage.getBatch().begin();
-    this.score.draw(this.stage.getBatch(), "" + arrayPipes.size, SCREEN_WIDTH / 2, 725);
-    this.stage.getBatch().end();
-}
-```
-
-### ¿Qué hace `setProjectionMatrix()`?
-
-El `batch` necesita saber cómo convertir coordenadas del juego a coordenadas de pantalla. La **matriz de proyección** contiene esta información. Al cambiarla, le decimos al batch que use una escala diferente:
-
-```
-worldCamera.combined  →  1 unidad = ~100 píxeles (mundo de 4.8 × 8)
-fontCamera.combined   →  1 unidad = 1 píxel    (pantalla de 480 × 800)
-```
-
-### ¿Por qué `begin()` y `end()` manuales?
-
-`stage.draw()` gestiona internamente su propio `batch.begin()` / `batch.end()`. Pero para dibujar el texto **fuera** del Stage, necesitamos abrir y cerrar el batch manualmente:
-
-```java
-this.stage.getBatch().begin();    // Abrir el batch
-this.score.draw(...);             // Dibujar el texto
-this.stage.getBatch().end();      // Cerrar el batch
-```
-
-### La puntuación temporal: `arrayPipes.size`
-
-```java
-this.score.draw(this.stage.getBatch(), "" + arrayPipes.size, SCREEN_WIDTH / 2, 725);
-```
-
-Por ahora, la "puntuación" es simplemente el número de tuberías activas en el array. No es la puntuación real del juego (que será el número de huecos cruzados), pero sirve como placeholder visual para verificar que el sistema de texto funciona.
-
-Los parámetros de posición (`SCREEN_WIDTH / 2`, `725`) están en **píxeles** porque estamos usando `fontCamera`. El texto aparece centrado horizontalmente y cerca de la parte superior de la pantalla.
-
----
-
-## Paso 8 — Cambios en `Pipes.draw()` y `detach()`
-
-### `draw()` simplificado
-
-En esta versión, `draw()` dibuja las texturas directamente desde las posiciones de los bodies, sin usar `setPosition()` del Actor para cada tubería:
-
-```java
-@Override
-public void draw(Batch batch, float parentAlpha) {
-    setPosition(bodyDown.getPosition().x, bodyDown.getPosition().y);
-    batch.draw(this.pipeDownTR,
-        bodyDown.getPosition().x - PIPE_WIDTH / 2,
-        bodyDown.getPosition().y - PIPE_HEIGHT / 2,
-        PIPE_WIDTH, PIPE_HEIGHT);
-
-    batch.draw(this.pipeTopTR,
-        bodyTop.getPosition().x - PIPE_WIDTH / 2,
-        bodyTop.getPosition().y - PIPE_HEIGHT / 2,
-        PIPE_WIDTH, PIPE_HEIGHT);
-}
-```
-
-Se llama a `setPosition()` una sola vez (con la posición del bodyDown) para mantener actualizada la posición del Actor, pero las coordenadas del `batch.draw()` se calculan directamente desde cada body.
-
-### `detach()` completo
-
-```java
-public void detach() {
-    bodyDown.destroyFixture(fixtureDown);
-    world.destroyBody(bodyDown);
-
-    bodyTop.destroyFixture(fixtureTop);
-    world.destroyBody(bodyTop);
-
-    bodyCounter.destroyFixture(fixtureCounter);
-    world.destroyBody(bodyCounter);
-}
-```
-
-Ahora se destruyen los **tres** bodies y sus fixtures. Esto resuelve el problema de la rama 5 donde el counter quedaba sin limpiar.
-
----
-
-## Paso 9 — `MainGame` prepara las tres pantallas
-
-```java
-public class MainGame extends Game {
-
-    public GameScreen gameScreen;
-    public GetReadyScreen getReadyScreen;
-    public GameOverScreen gameOverScreen;
-    public AssetMan assetManager;
-
-    @Override
-    public void create() {
-        this.assetManager = new AssetMan();
-
-        this.gameScreen = new GameScreen(this);
-        this.gameOverScreen = new GameOverScreen(this);
-        this.getReadyScreen = new GetReadyScreen(this);
-
-        setScreen(this.gameScreen);
-    }
-}
-```
-
-Las tres pantallas se crean al inicio pero solo `gameScreen` se muestra. En ramas futuras, las transiciones entre pantallas se harán con `setScreen()`.
-
----
-
-## Paso 10 — Cambios menores en `Bird`
-
-### `state` pasa a `public`
-
-```java
-public int state;  // Antes era private
-```
-
-Esto permite el acceso directo `bird.state` desde `GameScreen`. Funcional pero no ideal en términos de encapsulación.
-
-### `userData` en el body (no en la fixture)
-
-A diferencia de la rama 6, ahora `userData` se asigna al `Body`:
-
-```java
-this.body.setUserData(Utils.USER_BIRD);
-```
-
-Y la fixture no lleva `userData`. Esto simplifica el código pero cambia cómo se accederá al identificador en el `ContactListener` de ramas futuras.
+`scoreNumber` se inicializa a `0` en `prepareScore()`, que se llama en el constructor. Esto significa que el score se resetea cuando se crea `GameScreen`, no cuando se llama a `show()`. Si el jugador vuelve a jugar (y el juego recrea la pantalla), el score empezará desde 0.
 
 ---
 
 ## Errores comunes en esta rama
 
-### 1. "Las tuberías no aparecen"
+### 1. "`NullPointerException` en `beginContact()`"
 
-Verifica que `addPipes(delta)` se llama en `render()` **antes** de `stage.act()`. Si se llama después, las tuberías recién creadas no se actualizarán hasta el frame siguiente.
+Ocurre cuando `getUserData()` devuelve `null` para alguna fixture. Asegúrate de que **todas** las fixtures que participan en colisiones relevantes tienen `userData` asignado: `fixtureDown`, `fixtureTop`, `fixtureCounter` en Pipes, `fixture` en Bird, y las fixtures de suelo y techo en `GameScreen`.
 
-### 2. "Import incorrecto de Array"
+### 2. "El pájaro cruza la tubería sin morir"
 
-```java
-// ❌ MAL:
-import java.util.ArrayList;
+Si `areColider()` no detecta el contacto correcto, revisa que los valores de `USER_PIPE_DOWN`, `USER_PIPE_TOP` y `USER_BIRD` en `Utils` coincidan exactamente con los strings asignados como `userData`.
 
-// ✓ BIEN:
-import com.badlogic.gdx.utils.Array;
-```
+### 3. "El score no sube al cruzar el hueco"
 
-### 3. "El texto de la puntuación no se ve o es gigante"
+Comprueba que `USER_COUNTER = "counter"` (no `"pipeTop"` como en la rama 7). Este fue el bug de la rama anterior.
 
-Verifica que `fontCamera` usa `SCREEN_WIDTH` y `SCREEN_HEIGHT` (píxeles), no `WORLD_WIDTH` y `WORLD_HEIGTH`. Si usas las coordenadas del mundo, el texto será enorme.
+### 4. "El juego pasa a GameOver inmediatamente"
 
-### 4. "Crash al eliminar tuberías"
+`beginContact()` se llama durante `world.step()`. Si dentro de este callback intentas modificar el mundo físico directamente (crear/destruir bodies), Box2D lanzará una excepción porque el mundo está bloqueado. En esta implementación solo se cambia el estado del pájaro y la velocidad de los bodies (operaciones seguras), así que no hay problema. Pero si en el futuro añades más lógica, ten esto en cuenta.
 
-Asegúrate de que `removePipes()` se ejecuta **después** de `world.step()` y comprueba `!world.isLocked()` antes de destruir bodies.
+### 5. "La pantalla de GameOver no aparece tras 1.5 segundos"
 
-### 5. "El mundo del juego desaparece al dibujar la puntuación"
-
-Si olvidas restaurar `setProjectionMatrix(worldCamera.combined)` antes de `stage.draw()`, todo el mundo se dibujará en coordenadas de píxeles (aparecerá como un punto minúsculo o se saldrá de pantalla).
+Asegúrate de que `stage.addAction()` se llama sobre `this.stage` (el Stage de `GameScreen`), no sobre un Stage diferente. Y verifica que `this.stage.act()` se sigue ejecutando en `render()` después de la colisión para que los Actions avancen.
 
 ---
 
@@ -515,88 +344,13 @@ public class Utils {
     public static final String FONT_FNT = "FBFont.fnt";
     public static final String FONT_PNG = "FBFont.png";
 
-    // Identificadores de cuerpos
+    // Identificadores de cuerpos / fixtures
     public static final String USER_BIRD = "bird";
     public static final String USER_FLOOR = "floor";
+    public static final String USER_ROOF = "roof";
     public static final String USER_PIPE_DOWN = "pipeDown";
     public static final String USER_PIPE_TOP = "pipeTop";
-    public static final String USER_COUNTER = "pipeTop";
-}
-```
-
-### 📄 AssetMan.java
-
-```java
-package com.iesfa.flappy.extra;
-
-import static com.iesfa.flappy.extra.Utils.ATLAS_MAP;
-import static com.iesfa.flappy.extra.Utils.BACKGROUND_IMAGE;
-import static com.iesfa.flappy.extra.Utils.FONT_FNT;
-import static com.iesfa.flappy.extra.Utils.FONT_PNG;
-import static com.iesfa.flappy.extra.Utils.MUSIC_BG;
-import static com.iesfa.flappy.extra.Utils.PIPE_DAWN;
-import static com.iesfa.flappy.extra.Utils.PIPE_UP;
-import static com.iesfa.flappy.extra.Utils.SOUND_JUMP;
-
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.assets.AssetManager;
-import com.badlogic.gdx.audio.Music;
-import com.badlogic.gdx.audio.Sound;
-import com.badlogic.gdx.graphics.g2d.Animation;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.g2d.TextureAtlas;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
-
-public class AssetMan {
-
-    private AssetManager assetManager;
-    private TextureAtlas textureAtlas;
-
-    public AssetMan() {
-        this.assetManager = new AssetManager();
-
-        assetManager.load(ATLAS_MAP, TextureAtlas.class);
-        assetManager.load(SOUND_JUMP, Sound.class);
-        assetManager.load(MUSIC_BG, Music.class);
-        assetManager.finishLoading();
-
-        textureAtlas = assetManager.get(ATLAS_MAP);
-    }
-
-    public TextureRegion getBackground() {
-        return this.textureAtlas.findRegion(BACKGROUND_IMAGE);
-    }
-
-    public Animation<TextureRegion> getBirdAnimation() {
-        return new Animation<TextureRegion>(0.33f,
-                textureAtlas.findRegion("bird1"),
-                textureAtlas.findRegion("bird2"),
-                textureAtlas.findRegion("bird3"));
-    }
-
-    public TextureRegion getPipeDownTR() {
-        return this.textureAtlas.findRegion(PIPE_DAWN);
-    }
-
-    public TextureRegion getPipeUpTR() {
-        return this.textureAtlas.findRegion(PIPE_UP);
-    }
-
-    public Sound getJumpSound() {
-        return this.assetManager.get(SOUND_JUMP);
-    }
-
-    public Music getMusicBG() {
-        return this.assetManager.get(MUSIC_BG);
-    }
-
-    public BitmapFont getFont() {
-        return new BitmapFont(
-            Gdx.files.internal(FONT_FNT),
-            Gdx.files.internal(FONT_PNG),
-            false
-        );
-    }
+    public static final String USER_COUNTER = "counter";
 }
 ```
 
@@ -654,7 +408,7 @@ public class Bird extends Actor {
         bodyDef.type = BodyDef.BodyType.DynamicBody;
 
         this.body = this.world.createBody(bodyDef);
-        this.body.setUserData(Utils.USER_BIRD);
+        // Nota: el body ya NO tiene setUserData en esta rama
     }
 
     public void createFixture() {
@@ -662,7 +416,15 @@ public class Bird extends Actor {
         circle.setRadius(0.25f);
 
         this.fixture = this.body.createFixture(circle, 3);
+        this.fixture.setUserData(Utils.USER_BIRD);   // ← userData en la FIXTURE
+
         circle.dispose();
+    }
+
+    // Cambiar estado al recibir un golpe
+    public void hurt() {
+        this.state = STATE_DEAD;
+        this.stateTime = 0;
     }
 
     @Override
@@ -715,7 +477,7 @@ public class Pipes extends Actor {
     private static final float PIPE_WIDTH = 0.85f;
     private static final float PIPE_HEIGHT = 4f;
     private static final float SPACE_BETWEEN_PIPES = 2f;
-    private static final float SPEED = -2f;
+    static final float SPEED = -2f;
 
     private TextureRegion pipeDownTR;
     private TextureRegion pipeTopTR;
@@ -747,7 +509,7 @@ public class Pipes extends Actor {
         def.type = BodyDef.BodyType.KinematicBody;
 
         bodyDown = world.createBody(def);
-        bodyDown.setUserData(USER_PIPE_DOWN);
+        // Nota: el body ya NO tiene setUserData
         bodyDown.setLinearVelocity(SPEED, 0);
     }
 
@@ -755,10 +517,10 @@ public class Pipes extends Actor {
         BodyDef def = new BodyDef();
         def.position.x = bodyDown.getPosition().x;
         def.position.y = bodyDown.getPosition().y + PIPE_HEIGHT + SPACE_BETWEEN_PIPES;
-
         def.type = BodyDef.BodyType.KinematicBody;
+
         bodyTop = world.createBody(def);
-        bodyTop.setUserData(USER_PIPE_TOP);
+        // Nota: el body ya NO tiene setUserData
         bodyTop.setLinearVelocity(SPEED, 0);
     }
 
@@ -767,7 +529,10 @@ public class Pipes extends Actor {
         shape.setAsBox(PIPE_WIDTH / 2, PIPE_HEIGHT / 2);
 
         this.fixtureDown = bodyDown.createFixture(shape, 8);
+        this.fixtureDown.setUserData(USER_PIPE_DOWN);   // ← userData en FIXTURE
+
         this.fixtureTop = bodyTop.createFixture(shape, 8);
+        this.fixtureTop.setUserData(USER_PIPE_TOP);     // ← userData en FIXTURE
 
         shape.dispose();
     }
@@ -788,12 +553,20 @@ public class Pipes extends Actor {
 
         this.fixtureCounter = bodyCounter.createFixture(polygonShape, 3);
         this.fixtureCounter.setSensor(true);
-        this.fixtureCounter.setUserData(USER_COUNTER);
+        this.fixtureCounter.setUserData(USER_COUNTER);  // ← userData en FIXTURE
+
         polygonShape.dispose();
     }
 
     public boolean isOutOfScreen() {
         return this.bodyDown.getPosition().x <= -2f;
+    }
+
+    // Detener el movimiento de todos los bodies al morir el pájaro
+    public void stopPipes() {
+        this.bodyDown.setLinearVelocity(0, 0);
+        this.bodyTop.setLinearVelocity(0, 0);
+        this.bodyCounter.setLinearVelocity(0, 0);
     }
 
     @Override
@@ -804,6 +577,7 @@ public class Pipes extends Actor {
     @Override
     public void draw(Batch batch, float parentAlpha) {
         setPosition(bodyDown.getPosition().x, bodyDown.getPosition().y);
+
         batch.draw(this.pipeDownTR,
             bodyDown.getPosition().x - PIPE_WIDTH / 2,
             bodyDown.getPosition().y - PIPE_HEIGHT / 2,
@@ -835,8 +609,10 @@ package com.iesfa.flappy.screens;
 
 import static com.iesfa.flappy.extra.Utils.*;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -846,10 +622,15 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
+import com.badlogic.gdx.physics.box2d.Contact;
+import com.badlogic.gdx.physics.box2d.ContactImpulse;
+import com.badlogic.gdx.physics.box2d.ContactListener;
 import com.badlogic.gdx.physics.box2d.EdgeShape;
+import com.badlogic.gdx.physics.box2d.Manifold;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -857,7 +638,7 @@ import com.iesfa.flappy.MainGame;
 import com.iesfa.flappy.actors.Bird;
 import com.iesfa.flappy.actors.Pipes;
 
-public class GameScreen extends BaseScreen {
+public class GameScreen extends BaseScreen implements ContactListener {
 
     private final float TIME_TO_SPAWN_PIPES = 1.5f;
     private float timeToCreatePipe;
@@ -875,12 +656,16 @@ public class GameScreen extends BaseScreen {
     private OrthographicCamera fontCamera;
     private BitmapFont score;
 
+    private int scoreNumber;
+
     private Array<Pipes> arrayPipes;
 
     public GameScreen(MainGame mainGame) {
         super(mainGame);
 
         this.world = new World(new Vector2(0, -10), true);
+        this.world.setContactListener(this);         // ← registrar el listener
+
         FitViewport fitViewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGTH);
         this.stage = new Stage(fitViewport);
 
@@ -913,6 +698,7 @@ public class GameScreen extends BaseScreen {
     }
 
     private void prepareScore() {
+        this.scoreNumber = 0;
         this.score = this.mainGame.assetManager.getFont();
         this.score.getData().scale(1f);
 
@@ -959,7 +745,7 @@ public class GameScreen extends BaseScreen {
 
         EdgeShape edge = new EdgeShape();
         edge.set(0, WORLD_HEIGTH, WORLD_WIDTH, WORLD_HEIGTH);
-        body.createFixture(edge, 1);
+        body.createFixture(edge, 1).setUserData(USER_ROOF);  // ← userData en fixture
         edge.dispose();
     }
 
@@ -972,7 +758,7 @@ public class GameScreen extends BaseScreen {
 
         PolygonShape edge = new PolygonShape();
         edge.setAsBox(2.3f, 0.5f);
-        body.createFixture(edge, 3);
+        body.createFixture(edge, 3).setUserData(USER_FLOOR);  // ← userData también en fixture
         edge.dispose();
     }
 
@@ -985,7 +771,6 @@ public class GameScreen extends BaseScreen {
 
     @Override
     public void render(float delta) {
-
         addPipes(delta);
 
         this.stage.getBatch().setProjectionMatrix(worldCamera.combined);
@@ -1000,14 +785,14 @@ public class GameScreen extends BaseScreen {
 
         this.stage.getBatch().setProjectionMatrix(this.fontCamera.combined);
         this.stage.getBatch().begin();
-        this.score.draw(this.stage.getBatch(), "" + arrayPipes.size, SCREEN_WIDTH / 2, 725);
+        this.score.draw(this.stage.getBatch(), "" + this.scoreNumber, SCREEN_WIDTH / 2, 725);
         this.stage.getBatch().end();
     }
 
     @Override
     public void hide() {
         this.bird.detach();
-        this.bird.remove();
+        // this.bird.remove();  ← comentado en el código original
 
         this.musicbg.stop();
     }
@@ -1017,37 +802,52 @@ public class GameScreen extends BaseScreen {
         this.stage.dispose();
         this.world.dispose();
     }
-}
-```
 
-### 📄 MainGame.java
+    // ─────────────────────────────────────────────
+    //              COLISIONES
+    // ─────────────────────────────────────────────
 
-```java
-package com.iesfa.flappy;
-
-import com.badlogic.gdx.Game;
-import com.iesfa.flappy.extra.AssetMan;
-import com.iesfa.flappy.screens.GameOverScreen;
-import com.iesfa.flappy.screens.GameScreen;
-import com.iesfa.flappy.screens.GetReadyScreen;
-
-public class MainGame extends Game {
-
-    public GameScreen gameScreen;
-    public GetReadyScreen getReadyScreen;
-    public GameOverScreen gameOverScreen;
-    public AssetMan assetManager;
+    public boolean areColider(Contact contact, Object objA, Object objB) {
+        return (contact.getFixtureA().getUserData().equals(objA) &&
+                contact.getFixtureB().getUserData().equals(objB))
+            ||
+               (contact.getFixtureA().getUserData().equals(objB) &&
+                contact.getFixtureB().getUserData().equals(objA));
+    }
 
     @Override
-    public void create() {
-        this.assetManager = new AssetMan();
+    public void beginContact(Contact contact) {
+        if (areColider(contact, USER_BIRD, USER_COUNTER)) {
+            this.scoreNumber++;
+        } else {
+            this.bird.hurt();
 
-        this.gameScreen = new GameScreen(this);
-        this.gameOverScreen = new GameOverScreen(this);
-        this.getReadyScreen = new GetReadyScreen(this);
+            for (Pipes pipe : this.arrayPipes) {
+                pipe.stopPipes();
+            }
 
-        setScreen(this.gameScreen);
+            this.musicbg.stop();
+
+            this.stage.addAction(Actions.sequence(
+                Actions.delay(1.5f),
+                Actions.run(new Runnable() {
+                    @Override
+                    public void run() {
+                        mainGame.setScreen(mainGame.gameOverScreen);
+                    }
+                })
+            ));
+        }
     }
+
+    @Override
+    public void endContact(Contact contact) { }
+
+    @Override
+    public void preSolve(Contact contact, Manifold oldManifold) { }
+
+    @Override
+    public void postSolve(Contact contact, ContactImpulse impulse) { }
 }
 ```
 
@@ -1055,18 +855,24 @@ public class MainGame extends Game {
 
 ## 🛠️ Ejercicio práctico
 
-**Objetivo:** Entender la generación temporizada, la gestión de memoria y el sistema de doble cámara.
+**Objetivo:** Entender el sistema de colisiones y la relación entre fixtures, userData y el ContactListener.
 
-1. **Ejecuta el proyecto.** Deberías ver tuberías apareciendo cada 1.5 segundos con el hueco a alturas diferentes, y un número en pantalla que muestra cuántas tuberías hay activas.
+1. **Ejecuta el proyecto.** El pájaro debe morir al tocar las tuberías o el suelo, el score debe incrementarse al cruzar el hueco, y tras 1.5 segundos debe aparecer (o al menos intentar mostrar) la pantalla de GameOver.
 
-2. **Frecuencia de aparición:** Cambia `TIME_TO_SPAWN_PIPES` de `1.5f` a `0.5f`. ¿Qué pasa? ¿Y con `3f`?
+2. **Identifica los contactos:** Añade temporalmente un log en `beginContact()` para ver qué objetos colisionan:
+   ```java
+   Gdx.app.log("CONTACTO",
+       contact.getFixtureA().getUserData() + " vs " +
+       contact.getFixtureB().getUserData());
+   ```
+   ¿Cuántas veces se dispara al cruzar el sensor? ¿Y al tocar el suelo?
 
-3. **Rango de altura:** Cambia `MathUtils.random(0f, 2f)` a `MathUtils.random(-1f, 4f)`. ¿Aparecen tuberías inalcanzables? ¿Cuál es el rango ideal?
+3. **El else colateral:** En `beginContact()`, el `else` captura cualquier colisión que no sea pájaro+sensor. ¿Qué ocurre si el pájaro toca simultáneamente la tubería y el suelo? ¿Se llama a `beginContact()` dos veces? Pruébalo y observa si el score cambia de manera extraña.
 
-4. **Velocidad y frecuencia:** Si subes `SPEED` a `-4f`, ¿debes ajustar también `TIME_TO_SPAWN_PIPES`?
+4. **Tiempo de gracia:** Cambia `Actions.delay(1.5f)` a `Actions.delay(0f)`. ¿Qué efecto visual produce en el momento de morir?
 
-5. **Posición del texto:** Cambia las coordenadas `(SCREEN_WIDTH / 2, 725)` a `(100, 400)`. ¿Dónde aparece ahora? Recuerda que está en píxeles.
+5. **Quita `stopPipes()`:** Comenta el bucle de `stopPipes()` en `beginContact()`. ¿Qué aspecto tiene morir ahora? ¿Es mejor o peor la experiencia de juego?
 
-6. **Escala de la fuente:** Prueba `this.score.getData().scale(0.5f)` y `scale(2f)`. ¿Cómo afecta al tamaño del texto?
+6. **Ejercicio de alumno:** En `hide()` hay un `TODO` que indica que deberías liberar la física del suelo y el techo. ¿Cómo guardarías las referencias a esos bodies para poder hacer `world.destroyBody()` en `hide()`?
 
-7. **Pregunta para reflexionar:** `arrayPipes.size` no es la puntuación real del juego (que sería el número de huecos cruzados). ¿Cómo implementarías un contador que sume 1 cada vez que el pájaro cruza un sensor? ¿Qué componente necesitarías que aún no hemos implementado?
+7. **Pregunta para reflexionar:** `beginContact()` se ejecuta dentro del `world.step()` (el mundo está bloqueado en ese momento). ¿Por qué `stopPipes()` (que llama a `setLinearVelocity()`) es seguro dentro del callback pero `pipe.detach()` (que llama a `destroyBody()`) no lo sería?

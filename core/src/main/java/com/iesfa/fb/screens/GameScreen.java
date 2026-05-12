@@ -216,7 +216,7 @@ public class GameScreen extends BaseScreen implements ContactListener {
 
         this.stage.getBatch().setProjectionMatrix(this.fontCamera.combined);
         this.stage.getBatch().begin();
-        this.score.draw(this.stage.getBatch(), ""+arrayPipes.size,SCREEN_WIDTH/2, 725);
+        this.score.draw(this.stage.getBatch(), ""+this.scoreNumber,SCREEN_WIDTH/2, 725);
         this.stage.getBatch().end();
     }
 
